@@ -1,0 +1,151 @@
+# MagicZip
+
+A Swift library for reading and creating ZIP archives over vendored minizip-ng 4.2.2.
+Supports **iOS 16+, iOS Simulator and macOS 13+**, with **Xcode 26.0+ / Swift tools 6.2**.
+The public product/module is `MagicZip`. No experimental Swift flags or external runtime
+dependencies: Apple builds use system zlib, CommonCrypto and Security.
+
+## Installation
+
+### Swift Package (primary)
+
+```swift
+.package(url: "https://github.com/igooor-bb/MagicZip.git", from: "0.1.0")
+```
+
+Add `.product(name: "MagicZip", package: "MagicZip")` to your target. Until a release tag
+is published, use a local package checkout or an explicitly chosen commit revision.
+
+### CocoaPods
+
+```ruby
+pod 'MagicZip', '~> 0.1'
+```
+
+The pod depends on the companion implementation spec `MagicZipCMinizip`, whose Clang
+module is `CMinizip`. Both specs must be available in your spec repository. Nothing is
+published by this checkout. For local development, use both paths:
+
+```ruby
+pod 'MagicZip', :path => '/path/to/MagicZip'
+pod 'MagicZipCMinizip', :path => '/path/to/MagicZip'
+```
+
+SPM and CocoaPods compile the same Swift, C, configuration and patched vendor files.
+The separate C target avoids mixed-language target workarounds. Consumers use:
+
+```swift
+import MagicZip
+```
+
+## Read and extract
+
+```swift
+try ZIPReader.withArchive(at: archiveURL) { reader in
+    for entry in reader.entries {
+        print(entry.path, entry.uncompressedSize, entry.encryption)
+    }
+    let metadata = reader.entry(at: "assets/logo.png")
+    let smallFile = try reader.data(path: "notes.txt", maximumBytes: 1024 * 1024)
+    try reader.read(path: "video.mov") { chunk in
+        // Consume owned Data synchronously. Success is confirmed only after the final integrity check.
+        consume(chunk)
+    }
+    try reader.extract(to: outputURL, selection: .subtree("assets"))
+}
+```
+
+Use `.all` (the default) or `.paths(["notes.txt", "empty/"])` for other selections.
+Unselected payloads are never opened. Copied metadata remains valid after the scope closes.
+Add `password:` when reading AES entries. Optional password failures never expose credentials
+in library-generated errors.
+
+## Create
+
+```swift
+try ZIPWriter.withArchive(at: archiveURL, overwrite: .replace) { writer in
+    try writer.add(data: Data("Hello".utf8), path: "hello.txt", compression: .store)
+    try writer.add(file: sourceURL, path: "assets/source.bin",
+                   compression: .deflate(level: 9), password: "example-password")
+    try writer.addDirectory(path: "empty")
+    try writer.add(directory: folderURL, path: "folder")
+}
+```
+
+For a producer-backed stream, use `addStream(path:compression:password:modificationDate:producer:)`.
+The producer receives a maximum chunk size of 64 KiB and returns a nonempty `Data` no larger
+than requested, or `nil` at EOF. Source files/directories must remain stable during reading.
+Creation uses ZIP64 for entries of unknown final size, including small streamed files.
+
+## Ownership, limits and publication
+
+- Reader/writer sessions own one handle, are synchronous and non-`Sendable`, and reject
+  concurrent/reentrant use. An internal `~Copyable` owner prevents handle copies. Successful
+  scopes explicitly check entry/archive finalization. A failed add invalidates the writer.
+- Streaming payload memory is bounded. Metadata grows with entries/name bytes and has finite
+  budgets. Defaults: 100,000 entries, 16 MiB names, 1 GiB per entry, 4 GiB per selected operation,
+  maximum expansion ratio 1,000. Customize `ZIPLimits`; `data` has a separate 16 MiB default cap.
+- Files/trees are staged privately beside the destination. Default overwrite policy is `.fail`;
+  `.replace` atomically replaces a complete destination of the same type without merging.
+  Failure before publication removes staging output and preserves the old destination.
+  Cleanup failure after publication is reported, with the new result already visible.
+- Task cancellation is checked between chunks; callbacks can throw. CRC-32, sizes and AES HMAC
+  are checked before successful completion. Streamed chunks remain provisional until then.
+- Destination parents must exist and contain no symlink components. This intentionally rejects
+  system aliases such as `/tmp` and `/var`; use their actual paths, e.g. `/private/tmp`.
+  Foundation's `resolvingSymlinksInPath()` may retain these aliases on macOS.
+- Traversal, absolute/ambiguous names, duplicates, case/Unicode aliases, file/directory conflicts,
+  symlinks and special files are rejected. Writes/cleanup are descriptor-relative and do not
+  follow symlinks. Permissions and timestamps are not restored during extraction.
+
+Supported: Store/Deflate, plaintext/WinZIP AES-256, UTF-8, empty entries, ZIP64. Unsupported:
+ZipCrypto, AES-128/192, legacy filename encodings, split archives, other compression methods,
+in-place modification/append, custom containers and MagicBox/BundleSupport integration.
+Unsupported codecs/encryption can be listed but throw when selected. No secure-erasure or
+power-loss durability guarantee; abrupt process termination may leave a staging directory.
+
+## Development
+
+Infrastructure follows [Wift](https://github.com/igooor-bb/wift): pinned mise tools and identical
+local/CI tasks. Install mise and Xcode 26+, then:
+
+```sh
+mise trust
+mise install
+mise run format       # SwiftFormat + clang-format, owned code only
+mise run format-check # checks both Swift and C
+mise run lint         # SwiftLint
+mise run test         # Swift Testing
+mise run check        # format-check, lint, test
+./Scripts/validate-apple.sh
+```
+
+SwiftFormat 0.62.1, SwiftLint 0.65.1 and clang-format 22.1.8 are pinned. Vendored code is excluded
+from formatting/linting. Apple validation builds macOS, iOS device and Simulator plus DocC.
+See [Validation](Validation/README.md) for real CocoaPods clients, independent SSZipArchive
+interoperability, RSS measurements and fixture regeneration. Public declarations have DocC
+comments and the catalog lives in `Sources/MagicZip/MagicZip.docc`.
+
+## Updating minizip-ng
+
+```sh
+./Scripts/update-minizip.sh --ref 4.2.2
+```
+
+The first vendoring was performed with this same script. It accepts exact tags/full commits,
+resolves tags, downloads from official upstream, validates the archive, selects reviewed files
+and atomically replaces only the vendor directory. Ordinary builds never download or run CMake.
+
+Current provenance is in [`METADATA.json`](Sources/CMinizip/vendor/METADATA.json): upstream URL,
+ref, resolved commit, archive SHA-256 and configuration/ordered patch hashes. Local patches are
+in [`Scripts/minizip/patches`](Scripts/minizip/patches), applied in explicit `series` order.
+See [the importer guide](Scripts/minizip/README.md). Repeat the import and verify no diff.
+
+C symbol isolation is generated for all upstream `mz_*` identifiers, including globals, using
+`magiczip_` names. The compatibility API is not compiled. A Clang module name alone would not
+prevent collisions; the validation client links and exercises both libraries in one process.
+
+## License
+
+MagicZip-owned code is MIT licensed; see [LICENSE](LICENSE). Vendored minizip-ng retains its
+zlib license and original source notices. See [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).

@@ -306,7 +306,6 @@
 #define mz_zip_ntfs_to_unix_time magiczip_mz_zip_ntfs_to_unix_time
 #define mz_zip_open magiczip_mz_zip_open
 #define mz_zip_path_compare magiczip_mz_zip_path_compare
-#define mz_zip_print magiczip_mz_zip_print
 #define mz_zip_read_cd magiczip_mz_zip_read_cd
 #define mz_zip_recover_cd magiczip_mz_zip_recover_cd
 #define mz_zip_s magiczip_mz_zip_s

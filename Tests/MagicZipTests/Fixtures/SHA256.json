@@ -1,0 +1,21 @@
+{
+  "absolute.zip": "b1c3ac1a2f3dba045535d1ec0cde5146cfe9cd08358b339387a78b4ac1902ba4",
+  "aes-auth-corrupt.zip": "c788e550f8edb73a5df463694e455f41d00ef20c30fff1d1fc4effb8fd0880de",
+  "aes1.zip": "29f152c0c4c059b903a45abb152a60551a4b8cf87b3db7ba008fc0c536d8c591",
+  "aes2.zip": "5cbec925f21ce183e9b71e9e30b311959ba3dc67abdf6486bd7eb0ac7430bfd3",
+  "case-alias.zip": "dacc051df380d2444d97bfd7ce39e91e3c3fe8d5f5b624e222b32a51fbec9bf8",
+  "dot.zip": "eabafb3e6196bcaa8bd4ad3310a7fbb874ff43b73e4ad114ca2123f66d73c250",
+  "duplicate.zip": "f81a1585c6cb010d7cdc75762271dba9373f421a6003edc55d4f855d0938a332",
+  "empty-component.zip": "acc5f01cbe284cd2b8ebfd979e518fa5ee2541db97911614e5293fc43ae90f15",
+  "prefix-conflict.zip": "836b838f96cc25a086ab434a1bccfec4bdbf62742176ddbb0b1adba2cbe47d95",
+  "python.zip": "6eac00ed72eb770ac57cda6ed2b78c5267cec02942a6f647d5efb4d4b4a003a7",
+  "selective-corrupt.zip": "3cf259b04fc5b18cb09220722f5cc7f7ae93dbe05d7370ee9038bcea46f46749",
+  "sszip-aes.zip": "b7074fbe8178f40d62c6b38029dace31c915fc04a923dfae417c057d787364f0",
+  "sszip-plain.zip": "ddb21beb9c7f4ec41fa8a7027c971d5a8616f2c1c27c37c4e79c84aeefe99479",
+  "symlink.zip": "4690f817c3fd8e366c71eeb2836f579bc0a55d0c764705fd18e62f334d785138",
+  "traversal.zip": "440d74f1977be4148d9437684f5cfc81f07a738c9d87c36703348c7e9ebfad27",
+  "truncated.zip": "dbdc702e6b2d10e1fa6747e7981884f91cecc5b6aa3f11e1d293c223f0b4c1d4",
+  "unicode-alias.zip": "172a5e092c8d234d59043e4b0361390f4fe57bc6c6730450673199611b8ca7c5",
+  "unsupported.zip": "4e2f85139a6d78858e8dd09c93c4c9500e4b9bc300132eab956f05a822a30e59",
+  "windows.zip": "862e1318800aedf2090c24dc0f697c89ba1e58776c11d6fc565ec5bd542f0dc1"
+}
