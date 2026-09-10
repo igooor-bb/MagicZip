@@ -1,0 +1,20 @@
+MagicZip third-party notices
+
+MagicZip-owned Swift/C code, integration scripts, documentation and tests are
+licensed under MIT; see LICENSE. Vendored code retains its original license.
+
+minizip-ng 4.2.2
+Upstream: https://github.com/zlib-ng/minizip-ng
+Copyright (C) Nathan Moinvaziri and contributors.
+Includes notices for Gilles Vollant, Mathias Svensson, and Brian Gladman in
+individual source files. Distributed under the zlib license. The complete
+license is preserved at Sources/CMinizip/vendor/LICENSE; source notices remain
+intact. Exact revision, archive SHA-256, configuration and ordered local patches
+are recorded in Sources/CMinizip/vendor/METADATA.json.
+
+Local alterations: fixed Apple feature configuration, symbol namespacing and
+propagation of finalization errors. See Scripts/minizip/patches/series.
+
+System dependencies (not vendored): Apple SDK zlib, CommonCrypto and Security.
+They are linked from the operating system under the applicable Apple SDK and
+system-library terms; no copies of these libraries are distributed here.

@@ -1,0 +1,9 @@
+.build/
+.swiftpm/
+.DS_Store
+DerivedData/
+Pods/
+*.xcworkspace/
+Sources/CMinizip/.import*
+Validation/PodClient/Podfile.lock
+Validation/PodClient/Client.xcodeproj/

@@ -1,0 +1,13 @@
+--- a/mz.h
++++ b/mz.h
+@@ -11,6 +11,10 @@
+ #ifndef MZ_H
+ #define MZ_H
+ 
++/* MagicZip local integration: fixed Apple features and isolated C symbols. */
++#include "mz_config.h"
++#include "magiczip_namespace.h"
++
+ /***************************************************************************/
+ 
+ /* MZ_VERSION */

@@ -1,0 +1,3 @@
+# Applied top to bottom; list every patch exactly once.
+0001-apple-namespace.patch
+0002-propagate-finalization-errors.patch

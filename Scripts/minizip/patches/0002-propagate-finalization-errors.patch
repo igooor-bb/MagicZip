@@ -1,0 +1,60 @@
+--- a/mz_strm_zlib.c
++++ b/mz_strm_zlib.c
+@@ -279,13 +279,15 @@
+ 
+ int32_t mz_stream_zlib_close(void *stream) {
+     mz_stream_zlib *zlib = (mz_stream_zlib *)stream;
++    int32_t err = MZ_OK;
+ 
+     if (zlib->mode & MZ_OPEN_MODE_WRITE) {
+ #ifdef MZ_ZIP_NO_COMPRESSION
+         return MZ_SUPPORT_ERROR;
+ #else
+-        mz_stream_zlib_deflate(stream, Z_FINISH);
+-        mz_stream_zlib_flush(stream);
++        err = mz_stream_zlib_deflate(stream, Z_FINISH);
++        if (err == MZ_OK)
++            err = mz_stream_zlib_flush(stream);
+ 
+         ZLIB_PREFIX(deflateEnd)(&zlib->zstream);
+ #endif
+@@ -299,6 +301,8 @@
+ 
+     zlib->initialized = 0;
+ 
++    if (err != MZ_OK)
++        return err;
+     if (zlib->error != Z_OK)
+         return MZ_CLOSE_ERROR;
+     return MZ_OK;
+--- a/mz_zip.c
++++ b/mz_zip.c
+@@ -2093,7 +2093,7 @@
+     if (!zip || mz_zip_entry_is_open(zip) != MZ_OK)
+         return MZ_PARAM_ERROR;
+ 
+-    mz_stream_close(zip->compress_stream);
++    err = mz_stream_close(zip->compress_stream);
+ 
+     mz_zip_print("Zip - Entry - Read Close\n");
+ 
+@@ -2159,7 +2159,7 @@
+     if (!zip || mz_zip_entry_is_open(zip) != MZ_OK)
+         return MZ_PARAM_ERROR;
+ 
+-    mz_stream_close(zip->compress_stream);
++    err = mz_stream_close(zip->compress_stream);
+ 
+     if (!zip->entry_raw)
+         crc32 = zip->entry_crc32;
+@@ -2175,7 +2175,9 @@
+ 
+     if (zip->file_info.flag & MZ_ZIP_FLAG_ENCRYPTED) {
+         mz_stream_set_base(zip->crypt_stream, zip->stream);
+-        err = mz_stream_close(zip->crypt_stream);
++        int32_t crypt_err = mz_stream_close(zip->crypt_stream);
++        if (err == MZ_OK)
++            err = crypt_err;
+ 
+         mz_stream_get_prop_int64(zip->crypt_stream, MZ_STREAM_PROP_TOTAL_OUT, &compressed_size);
+     }
