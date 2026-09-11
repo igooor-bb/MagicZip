@@ -15,6 +15,19 @@ are reference types so throwing callback APIs remain familiar. They do not confo
 on itself. Sessions retained past their scope reject further native operations; copied
 ``ZIPEntry`` values and the reader's immutable metadata remain valid.
 
+File opens and output creation return an internal noncopyable `FileDescriptor` owner.
+The native archive initializer takes a `consuming FileDescriptor`: ownership leaves the
+caller, and the adapter becomes responsible for closing on both success and failure.
+Its transfer method uses `discard self` to suppress the Swift owner's `deinit` without
+closing the transferred resource. Temporary filesystem operations accept
+`borrowing FileDescriptor`, keeping the owner alive for the duration of each operation.
+
+Files used directly by Swift have consuming scopes that borrow the descriptor to their
+body and explicitly check close afterward, preserving simultaneous body/close errors.
+Checked close relinquishes ownership before the POSIX call, so an error does not trigger
+a second close in `deinit`. `NativeArchive.close()` remains `mutating`: it leaves the
+stored archive owner in its closed state, which supports escaped-session rejection.
+
 ## Asynchronous callers
 
 ``ZIPReader/withArchiveAsync(at:limits:body:)`` and

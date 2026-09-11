@@ -110,6 +110,7 @@ code must finish or throw before cancellation can be observed by the next archiv
 - Reader/writer sessions own one handle, are synchronous and non-`Sendable`, and reject
   concurrent/reentrant use. An internal `~Copyable` owner prevents handle copies. Successful
   scopes explicitly check entry/archive finalization. A failed add invalidates the writer.
+  Descriptor transfer uses `consuming` and `discard self`; filesystem helpers use `borrowing`.
 - Streaming payload memory is bounded. Metadata grows with entries/name bytes and has finite
   budgets. Defaults: 100,000 entries, 16 MiB names, 1 GiB per entry, 4 GiB per selected operation,
   maximum expansion ratio 1,000. Customize `ZIPLimits`; `data` has a separate 16 MiB default cap.

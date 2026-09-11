@@ -2,10 +2,44 @@ import Darwin
 import Foundation
 
 struct FileDescriptor: ~Copyable {
+    /// Borrowed POSIX value; it must not be closed or transferred while this owner is live.
     let raw: Int32
     init(_ raw: Int32, operation: String, path: String) throws {
         guard raw >= 0 else { throw ZIPError.fileSystem(operation: operation, path: path, code: errno) }
         self.raw = raw
+    }
+
+    /// Transfers responsibility for closing the descriptor to a C API or another owner.
+    consuming func takeRawValue() -> Int32 {
+        let descriptor = raw
+        discard self
+        return descriptor
+    }
+
+    /// Ends ownership before closing, including the error path: never retry POSIX close.
+    consuming func close(operation: String, path: String) throws {
+        let descriptor = takeRawValue()
+        guard Darwin.close(descriptor) == 0 else {
+            throw ZIPError.fileSystem(operation: operation, path: path, code: errno)
+        }
+    }
+
+    /// Lends the descriptor to synchronous work, then checks close on success and failure.
+    consuming func withCheckedClose<T>(
+        operation: String, path: String, _ body: (borrowing FileDescriptor) throws -> T,
+    ) throws -> T {
+        let result: T
+        do {
+            result = try body(self)
+        } catch {
+            let primary = error
+            do { try close(operation: operation, path: path) } catch {
+                throw ZIPError.combined(primary: primary, cleanup: error)
+            }
+            throw primary
+        }
+        try close(operation: operation, path: path)
+        return result
     }
 
     deinit { _ = Darwin.close(raw) }
@@ -25,20 +59,21 @@ enum FileSystem {
         return current
     }
 
-    static func openFile(_ url: URL) throws -> Int32 {
+    static func openFile(_ url: URL) throws -> FileDescriptor {
         let parent = try openDirectory(url.deletingLastPathComponent())
-        let descriptor = openat(parent.raw, url.lastPathComponent, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
-        guard descriptor >= 0 else { throw ZIPError.fileSystem(operation: "open file", path: url.path, code: errno) }
+        let descriptor = try FileDescriptor(
+            openat(parent.raw, url.lastPathComponent, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC),
+            operation: "open file", path: url.path,
+        )
         var info = stat()
-        guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {
-            _ = Darwin.close(descriptor)
+        guard fstat(descriptor.raw, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {
             throw ZIPError.unsupported(path: url.path, feature: "Only regular source files are supported")
         }
         return descriptor
     }
 
-    static func directory(at parent: Int32, components: ArraySlice<String>) throws -> FileDescriptor {
-        var current = try FileDescriptor(dup(parent), operation: "duplicate directory", path: components.joined(separator: "/"))
+    static func directory(at parent: borrowing FileDescriptor, components: ArraySlice<String>) throws -> FileDescriptor {
+        var current = try FileDescriptor(dup(parent.raw), operation: "duplicate directory", path: components.joined(separator: "/"))
         for component in components {
             if mkdirat(current.raw, component, 0o700) != 0, errno != EEXIST {
                 throw ZIPError.fileSystem(operation: "create directory", path: component, code: errno)
@@ -51,11 +86,11 @@ enum FileSystem {
         return current
     }
 
-    static func write(_ data: Data, to descriptor: Int32, path: String) throws {
+    static func write(_ data: Data, to descriptor: borrowing FileDescriptor, path: String) throws {
         try data.withUnsafeBytes { bytes in
             var offset = 0
             while offset < bytes.count {
-                let count = Darwin.write(descriptor, bytes.baseAddress?.advanced(by: offset), bytes.count - offset)
+                let count = Darwin.write(descriptor.raw, bytes.baseAddress?.advanced(by: offset), bytes.count - offset)
                 if count < 0, errno == EINTR {
                     continue
                 }
@@ -65,9 +100,9 @@ enum FileSystem {
         }
     }
 
-    static func remove(parent: Int32, name: String) throws {
+    static func remove(parent: borrowing FileDescriptor, name: String) throws {
         var info = stat()
-        guard fstatat(parent, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
+        guard fstatat(parent.raw, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
             if errno == ENOENT {
                 return
             }
@@ -76,7 +111,7 @@ enum FileSystem {
         let directory = info.st_mode & S_IFMT == S_IFDIR
         if directory {
             let descriptor = try FileDescriptor(
-                openat(parent, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC), operation: "open cleanup", path: name,
+                openat(parent.raw, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC), operation: "open cleanup", path: name,
             )
             let copy = dup(descriptor.raw)
             guard copy >= 0 else { throw ZIPError.fileSystem(operation: "duplicate cleanup", path: name, code: errno) }
@@ -95,14 +130,14 @@ enum FileSystem {
                         $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXNAMLEN) + 1) { String(cString: $0) }
                     }
                     if child != ".", child != ".." {
-                        try remove(parent: descriptor.raw, name: child)
+                        try remove(parent: descriptor, name: child)
                     }
                 }
             } cleanup: {
                 guard closedir(stream) == 0 else { throw ZIPError.fileSystem(operation: "close cleanup", path: name, code: errno) }
             }
         }
-        guard unlinkat(parent, name, directory ? AT_REMOVEDIR : 0) == 0 else {
+        guard unlinkat(parent.raw, name, directory ? AT_REMOVEDIR : 0) == 0 else {
             throw ZIPError.fileSystem(operation: "remove temporary output", path: name, code: errno)
         }
     }
@@ -137,10 +172,13 @@ final class OutputTransaction {
         }
     }
 
-    func createFile(_ path: String) throws -> Int32 {
+    func createFile(_ path: String) throws -> FileDescriptor {
         let parts = try EntryPaths.components(path, directory: false)
-        let parent = try FileSystem.directory(at: directory.raw, components: parts.dropLast())
-        return openat(parent.raw, parts[parts.count - 1], O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        let parent = try FileSystem.directory(at: directory, components: parts.dropLast())
+        return try FileDescriptor(
+            openat(parent.raw, parts[parts.count - 1], O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600),
+            operation: "create output", path: path,
+        )
     }
 
     func publish(file: String? = nil, overwrite: ZIPOverwrite) throws {
@@ -171,13 +209,13 @@ final class OutputTransaction {
 
     func cleanup() throws {
         guard pendingCleanup else { return }
-        try FileSystem.remove(parent: parent.raw, name: temporaryName)
+        try FileSystem.remove(parent: parent, name: temporaryName)
         pendingCleanup = false
     }
 
     deinit {
         if pendingCleanup {
-            try? FileSystem.remove(parent: parent.raw, name: temporaryName)
+            try? FileSystem.remove(parent: parent, name: temporaryName)
         }
     }
 }

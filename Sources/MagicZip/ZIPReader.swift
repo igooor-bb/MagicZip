@@ -132,23 +132,16 @@ public final class ZIPReader {
                     try checkCancellation(cancellation)
                     let parts = try EntryPaths.components(entry.path, directory: entry.isDirectory)
                     if entry.isDirectory {
-                        _ = try FileSystem.directory(at: transaction.directory.raw, components: parts[...])
+                        _ = try FileSystem.directory(at: transaction.directory, components: parts[...])
                         try stream(entry, password: password, chunkSize: 64 * 1024, total: &total) { _ in }
                     } else {
                         let descriptor = try transaction.createFile(entry.path)
-                        guard descriptor >= 0 else {
-                            throw ZIPError.fileSystem(operation: "create output", path: entry.path, code: errno)
-                        }
-                        try completing {
+                        try descriptor.withCheckedClose(operation: "close output", path: entry.path) { descriptor in
                             try stream(entry, password: password, chunkSize: 64 * 1024, total: &total) {
                                 try FileSystem.write($0, to: descriptor, path: entry.path)
                             }
-                            guard fsync(descriptor) == 0 else {
+                            guard fsync(descriptor.raw) == 0 else {
                                 throw ZIPError.fileSystem(operation: "sync output", path: entry.path, code: errno)
-                            }
-                        } cleanup: {
-                            guard Darwin.close(descriptor) == 0 else {
-                                throw ZIPError.fileSystem(operation: "close output", path: entry.path, code: errno)
                             }
                         }
                     }

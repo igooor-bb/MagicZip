@@ -6,9 +6,10 @@ import Foundation
 struct NativeArchive: ~Copyable {
     var pointer: OpaquePointer?
 
-    init(fileDescriptor: Int32, writing: Bool) throws {
+    init(fileDescriptor: consuming FileDescriptor, writing: Bool) throws {
         var pointer: OpaquePointer?
-        try check(magiczip_open(fileDescriptor, writing ? 1 : 0, &pointer), "open archive")
+        // The adapter consumes the descriptor on every path, including failure to open.
+        try check(magiczip_open(fileDescriptor.takeRawValue(), writing ? 1 : 0, &pointer), "open archive")
         self.pointer = pointer
     }
 

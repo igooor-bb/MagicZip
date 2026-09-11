@@ -16,12 +16,39 @@ struct FailureTests {
         #expect(magiczip_test_finalization_failure(1) == -1) // Central-directory stream copy maps I/O errors to MZ_STREAM_ERROR.
     }
 
+    @Test(arguments: [false, true])
+    func `descriptor scope reports close failure and preserves body error`(bodyFails: Bool) throws {
+        // Outside the process descriptor range: close deterministically fails without racing
+        // another test that might reuse a recently closed descriptor number.
+        let descriptor = try FileDescriptor(Int32.max, operation: "test ownership", path: "fixture")
+        do {
+            try descriptor.withCheckedClose(operation: "close fixture", path: "fixture") { _ in
+                if bodyFails {
+                    throw CancellationError()
+                }
+            }
+            Issue.record("Expected close failure")
+        } catch let ZIPError.combined(primary, cleanup) {
+            #expect(bodyFails)
+            #expect(primary is CancellationError)
+            guard case let ZIPError.fileSystem(operation, path, code) = cleanup else {
+                Issue.record("Expected filesystem cleanup error")
+                return
+            }
+            #expect(operation == "close fixture" && path == "fixture" && code == EBADF)
+        } catch let ZIPError.fileSystem(operation, path, code) {
+            #expect(!bodyFails)
+            #expect(operation == "close fixture" && path == "fixture" && code == EBADF)
+        }
+    }
+
     @Test func `native archive close reports file failure`() throws {
         try temporaryDirectory { root in
             let url = root.appendingPathComponent("fault.zip")
             let fd = open(url.path, O_CREAT | O_RDWR | O_EXCL, 0o600)
             #expect(fd >= 0)
-            var native = try NativeArchive(fileDescriptor: fd, writing: true)
+            let descriptor = try FileDescriptor(fd, operation: "open fault file", path: url.path)
+            var native = try NativeArchive(fileDescriptor: descriptor, writing: true)
             let readOnly = open(url.path, O_RDONLY)
             #expect(readOnly >= 0)
             #expect(dup2(readOnly, fd) == fd) // Keep the descriptor occupied while forcing the final write to fail.

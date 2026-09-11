@@ -17,7 +17,7 @@ public final class ZIPWriter {
     private var entryCount = 0
     private var pathBytes = 0
 
-    private init(fileDescriptor: Int32, cancellation: ArchiveCancellation?) throws {
+    private init(fileDescriptor: consuming FileDescriptor, cancellation: ArchiveCancellation?) throws {
         self.cancellation = cancellation
         native = try NativeArchive(fileDescriptor: fileDescriptor, writing: true)
     }
@@ -48,7 +48,6 @@ public final class ZIPWriter {
         let transaction = try OutputTransaction(destination: url)
         return try completing {
             let descriptor = try transaction.createFile("archive.zip")
-            guard descriptor >= 0 else { throw ZIPError.fileSystem(operation: "create archive", path: url.path, code: errno) }
             let writer = try ZIPWriter(fileDescriptor: descriptor, cancellation: cancellation)
             let result = try completing {
                 let result = try body(writer)
@@ -101,8 +100,8 @@ public final class ZIPWriter {
         try operation {
             let descriptor = try FileSystem.openFile(url)
             var info = stat()
-            try completing {
-                guard fstat(descriptor, &info) == 0 else {
+            try descriptor.withCheckedClose(operation: "close source", path: url.path) { descriptor in
+                guard fstat(descriptor.raw, &info) == 0 else {
                     throw ZIPError.fileSystem(operation: "inspect source", path: url.path, code: errno)
                 }
                 try append(
@@ -112,16 +111,12 @@ public final class ZIPWriter {
                     var buffer = [UInt8](repeating: 0, count: maximum)
                     var count: Int
                     repeat {
-                        count = Darwin.read(descriptor, &buffer, buffer.count)
+                        count = Darwin.read(descriptor.raw, &buffer, buffer.count)
                     } while count < 0 && errno == EINTR
                     guard count >= 0 else {
                         throw ZIPError.fileSystem(operation: "read source", path: url.path, code: errno)
                     }
                     return count == 0 ? nil : Data(buffer.prefix(count))
-                }
-            } cleanup: {
-                guard Darwin.close(descriptor) == 0 else {
-                    throw ZIPError.fileSystem(operation: "close source", path: url.path, code: errno)
                 }
             }
         }
@@ -155,7 +150,7 @@ public final class ZIPWriter {
         // This outer gate protects the complete recursive operation and uses private helpers below.
         try operation {
             let root = try FileSystem.openDirectory(url)
-            try appendTree(descriptor: root.raw, path: path, compression: compression, password: password)
+            try appendTree(descriptor: root, path: path, compression: compression, password: password)
         }
     }
 
@@ -243,7 +238,7 @@ public final class ZIPWriter {
         }
     }
 
-    private func appendTree(descriptor: Int32, path: String, compression: ZIPCompression, password: String?) throws {
+    private func appendTree(descriptor: borrowing FileDescriptor, path: String, compression: ZIPCompression, password: String?) throws {
         try append(
             path: path.hasSuffix("/") ? path : path + "/",
             directory: true,
@@ -251,7 +246,7 @@ public final class ZIPWriter {
             password: nil,
             modificationDate: Date(),
         ) { _ in nil }
-        let duplicate = dup(descriptor)
+        let duplicate = dup(descriptor.raw)
         guard duplicate >= 0 else { throw ZIPError.fileSystem(operation: "duplicate source directory", path: path, code: errno) }
         guard let stream = fdopendir(duplicate) else {
             _ = Darwin.close(duplicate)
@@ -280,14 +275,14 @@ public final class ZIPWriter {
             try checkCancellation(cancellation)
             let childPath = (path.hasSuffix("/") ? path : path + "/") + name
             let child = try FileDescriptor(
-                openat(descriptor, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC),
+                openat(descriptor.raw, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC),
                 operation: "open source child",
                 path: childPath,
             )
             var info = stat()
             guard fstat(child.raw, &info) == 0 else { throw ZIPError.fileSystem(operation: "inspect source", path: childPath, code: errno) }
             if info.st_mode & S_IFMT == S_IFDIR {
-                try appendTree(descriptor: child.raw, path: childPath, compression: compression, password: password)
+                try appendTree(descriptor: child, path: childPath, compression: compression, password: password)
             } else if info.st_mode & S_IFMT == S_IFREG {
                 try append(
                     path: childPath,
