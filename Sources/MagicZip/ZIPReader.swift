@@ -13,15 +13,17 @@ public final class ZIPReader {
     /// Access does not move the native cursor or decompress payloads.
     public let entries: [ZIPEntry]
     private let limits: ZIPLimits
+    private let cancellation: ArchiveCancellation?
     private var native: NativeArchive
     private let gate = NSLock()
     private let index: [Data: Int]
 
-    private init(at url: URL, limits: ZIPLimits) throws {
+    private init(at url: URL, limits: ZIPLimits, cancellation: ArchiveCancellation?) throws {
+        self.cancellation = cancellation
         try limits.validate()
         native = try NativeArchive(fileDescriptor: FileSystem.openFile(url), writing: false)
         self.limits = limits
-        let entries = try Self.scan(native.pointer, limits: limits)
+        let entries = try Self.scan(native.pointer, limits: limits, cancellation: cancellation)
         self.entries = entries
         index = Dictionary(uniqueKeysWithValues: entries.enumerated().map { (Data($0.element.path.utf8), $0.offset) })
     }
@@ -41,7 +43,14 @@ public final class ZIPReader {
     /// }
     /// ```
     public static func withArchive<T>(at url: URL, limits: ZIPLimits = ZIPLimits(), body: (ZIPReader) throws -> T) throws -> T {
-        let reader = try ZIPReader(at: url, limits: limits)
+        try withArchive(at: url, limits: limits, cancellation: nil, body: body)
+    }
+
+    static func withArchive<T>(
+        at url: URL, limits: ZIPLimits, cancellation: ArchiveCancellation?, body: (ZIPReader) throws -> T,
+    ) throws -> T {
+        try checkCancellation(cancellation)
+        let reader = try ZIPReader(at: url, limits: limits, cancellation: cancellation)
         return try completing {
             try body(reader)
         } cleanup: {
@@ -114,12 +123,13 @@ public final class ZIPReader {
         to destination: URL, selection: ZIPSelection = .all, password: String? = nil, overwrite: ZIPOverwrite = .fail,
     ) throws {
         try operation {
+            try checkCancellation(cancellation)
             let selected = try select(selection)
             let transaction = try OutputTransaction(destination: destination)
             try completing {
                 var total: Int64 = 0
                 for entry in selected {
-                    try checkCancellation()
+                    try checkCancellation(cancellation)
                     let parts = try EntryPaths.components(entry.path, directory: entry.isDirectory)
                     if entry.isDirectory {
                         _ = try FileSystem.directory(at: transaction.directory.raw, components: parts[...])
@@ -143,6 +153,7 @@ public final class ZIPReader {
                         }
                     }
                 }
+                try checkCancellation(cancellation)
                 try transaction.publish(overwrite: overwrite)
             } cleanup: {
                 try transaction.cleanup()
@@ -195,7 +206,7 @@ public final class ZIPReader {
                 var produced: Int64 = 0
                 var buffer = [UInt8](repeating: 0, count: chunkSize)
                 while true {
-                    try checkCancellation()
+                    try checkCancellation(cancellation)
                     let count = magiczip_read(native.pointer, &buffer, Int32(buffer.count))
                     guard count >= 0 else { try check(count, "read entry", path: entry.path); return }
                     if count == 0 {
@@ -216,7 +227,9 @@ public final class ZIPReader {
         }
     }
 
-    private static func scan(_ pointer: OpaquePointer?, limits: ZIPLimits) throws -> [ZIPEntry] {
+    private static func scan(
+        _ pointer: OpaquePointer?, limits: ZIPLimits, cancellation: ArchiveCancellation?,
+    ) throws -> [ZIPEntry] {
         var count: UInt64 = 0
         try check(magiczip_count(pointer, &count), "count entries")
         guard count <= limits.maximumEntries else { throw ZIPError.limitExceeded("Entry count") }
@@ -225,7 +238,7 @@ public final class ZIPReader {
         var pathBytes = 0
         var status = magiczip_first(pointer)
         while status != -100 {
-            try checkCancellation()
+            try checkCancellation(cancellation)
             try check(status, "enumerate entries")
             guard entries.count < limits.maximumEntries else { throw ZIPError.limitExceeded("Entry count") }
             var info = magiczip_info()

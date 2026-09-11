@@ -7,20 +7,20 @@ private enum PodClientValidation {
     static let payload = Data("CocoaPods client".utf8)
     static let password = "client-password"
 
-    static func run() throws {
+    static func run() async throws {
         let root = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         let archive = root.appendingPathComponent("client.zip")
-        try ZIPWriter.withArchive(at: archive) { writer in
+        try await ZIPWriter.withArchiveAsync(at: archive) { writer in
             try writer.add(data: payload, path: "hello", password: password)
         }
-        try verifyMagicZip(archive)
+        try await verifyMagicZip(archive)
         try verifyReferenceReader(archive, root: root)
         print("PASS: real CocoaPods client imports MagicZip; ZIP compatibility verified")
     }
 
-    static func verifyMagicZip(_ archive: URL) throws {
-        try ZIPReader.withArchive(at: archive) { reader in
+    static func verifyMagicZip(_ archive: URL) async throws {
+        try await ZIPReader.withArchiveAsync(at: archive) { reader in
             let actual = try reader.data(path: "hello", password: password)
             guard actual == payload else { throw ValidationFailure.payloadMismatch }
         }
@@ -47,4 +47,4 @@ private enum PodClientValidation {
     }
 }
 
-try PodClientValidation.run()
+try await PodClientValidation.run()

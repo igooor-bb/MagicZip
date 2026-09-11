@@ -48,6 +48,11 @@ separators. Neither extraction nor archive creation follows symlinks.
 - ``ZIPEncryption``
 - ``ZIPOverwrite``
 
+### Asynchronous sessions
+
+- ``ZIPReader/withArchiveAsync(at:limits:body:)``
+- ``ZIPWriter/withArchiveAsync(at:overwrite:body:)``
+
 ### Failure handling and ownership
 
 - ``ZIPError``

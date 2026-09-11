@@ -11,12 +11,14 @@ import Foundation
 public final class ZIPWriter {
     private var native: NativeArchive
     private let gate = NSLock()
+    private let cancellation: ArchiveCancellation?
     private var failed = false
     private var paths = EntryPaths()
     private var entryCount = 0
     private var pathBytes = 0
 
-    private init(fileDescriptor: Int32) throws {
+    private init(fileDescriptor: Int32, cancellation: ArchiveCancellation?) throws {
+        self.cancellation = cancellation
         native = try NativeArchive(fileDescriptor: fileDescriptor, writing: true)
     }
 
@@ -36,11 +38,18 @@ public final class ZIPWriter {
     /// }
     /// ```
     public static func withArchive<T>(at url: URL, overwrite: ZIPOverwrite = .fail, body: (ZIPWriter) throws -> T) throws -> T {
+        try withArchive(at: url, overwrite: overwrite, cancellation: nil, body: body)
+    }
+
+    static func withArchive<T>(
+        at url: URL, overwrite: ZIPOverwrite, cancellation: ArchiveCancellation?, body: (ZIPWriter) throws -> T,
+    ) throws -> T {
+        try checkCancellation(cancellation)
         let transaction = try OutputTransaction(destination: url)
         return try completing {
             let descriptor = try transaction.createFile("archive.zip")
             guard descriptor >= 0 else { throw ZIPError.fileSystem(operation: "create archive", path: url.path, code: errno) }
-            let writer = try ZIPWriter(fileDescriptor: descriptor)
+            let writer = try ZIPWriter(fileDescriptor: descriptor, cancellation: cancellation)
             let result = try completing {
                 let result = try body(writer)
                 guard !writer.failed else { throw ZIPError.closed }
@@ -48,6 +57,7 @@ public final class ZIPWriter {
             } cleanup: {
                 try writer.finish()
             }
+            try checkCancellation(cancellation)
             try transaction.publish(file: "archive.zip", overwrite: overwrite)
             return result
         } cleanup: {
@@ -190,7 +200,7 @@ public final class ZIPWriter {
         path: String, directory: Bool, compression: ZIPCompression, password: String?, modificationDate: Date,
         producer: (Int) throws -> Data?,
     ) throws {
-        try checkCancellation()
+        try checkCancellation(cancellation)
         try paths.insert(path, directory: directory)
         guard entryCount < 100_000, path.utf8.count <= 16 * 1024 * 1024 - pathBytes else {
             throw ZIPError.limitExceeded("Writer metadata")
@@ -216,7 +226,7 @@ public final class ZIPWriter {
             )
             try completing {
                 while true {
-                    try checkCancellation()
+                    try checkCancellation(cancellation)
                     guard let data = try producer(64 * 1024) else { break }
                     guard !data.isEmpty, data.count <= 64 * 1024 else {
                         throw ZIPError.invalidArgument("Producer must return 1...65536 bytes or nil")
@@ -267,7 +277,7 @@ public final class ZIPWriter {
             guard closedir(stream) == 0 else { throw ZIPError.fileSystem(operation: "close source directory", path: path, code: errno) }
         }
         for name in children {
-            try checkCancellation()
+            try checkCancellation(cancellation)
             let childPath = (path.hasSuffix("/") ? path : path + "/") + name
             let child = try FileDescriptor(
                 openat(descriptor, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC),

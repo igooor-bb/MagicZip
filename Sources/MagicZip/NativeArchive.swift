@@ -47,7 +47,8 @@ func completing<T>(_ body: () throws -> T, cleanup: () throws -> Void) throws ->
     return value
 }
 
-func checkCancellation() throws {
+func checkCancellation(_ cancellation: ArchiveCancellation? = nil) throws {
+    try cancellation?.check()
     try Task<Never, Never>.checkCancellation()
 }
 

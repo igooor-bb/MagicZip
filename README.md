@@ -77,6 +77,34 @@ The producer receives a maximum chunk size of 64 KiB and returns a nonempty `Dat
 than requested, or `nil` at EOF. Source files/directories must remain stable during reading.
 Creation uses ZIP64 for entries of unknown final size, including small streamed files.
 
+## Async/await
+
+Use `withArchiveAsync` to suspend the caller while a complete archive session runs on a
+background work queue. Existing synchronous APIs remain available.
+
+```swift
+try await ZIPWriter.withArchiveAsync(at: archiveURL) { writer in
+    try writer.add(file: sourceURL, path: "assets/source.bin", password: "example-password")
+}
+let entries = try await ZIPReader.withArchiveAsync(at: archiveURL) { reader in
+    try reader.extract(to: outputURL, selection: .subtree("assets"), password: "example-password")
+    return reader.entries
+}
+```
+
+Bodies are synchronous `@Sendable` closures; capture immutable URLs/data/options and return
+owned `Sendable` values. Readers/writers stay inside their scope. Streaming callbacks still
+consume/produce bounded chunks synchronously; async producers and `AsyncSequence` are not
+provided. Do not access main-actor state from the body or synchronously wait for another
+async archive operation. Task-local values and task identity do not propagate into the body.
+
+A shared queue runs at most two async sessions at once. Cancellation is forwarded explicitly
+to archive checkpoints, including before publishing each result. Await waits for finalization
+and cleanup, even when cancelled. A cancelled queued job skips its body when a worker becomes
+available; native calls and user callbacks cannot be interrupted. Cancellation racing with or
+following publication does not undo the result and may still return success. Arbitrary body
+code must finish or throw before cancellation can be observed by the next archive operation.
+
 ## Ownership, limits and publication
 
 - Reader/writer sessions own one handle, are synchronous and non-`Sendable`, and reject

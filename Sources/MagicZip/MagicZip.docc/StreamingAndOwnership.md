@@ -15,6 +15,34 @@ are reference types so throwing callback APIs remain familiar. They do not confo
 on itself. Sessions retained past their scope reject further native operations; copied
 ``ZIPEntry`` values and the reader's immutable metadata remain valid.
 
+## Asynchronous callers
+
+``ZIPReader/withArchiveAsync(at:limits:body:)`` and
+``ZIPWriter/withArchiveAsync(at:overwrite:body:)`` suspend the calling task and run a complete
+synchronous session on a background queue. Up to two async sessions execute at once across
+readers and writers. Each handle is created, used and closed by its own worker job.
+
+```swift
+func extractAssets(archive: URL, destination: URL) async throws -> [ZIPEntry] {
+    try await ZIPReader.withArchiveAsync(at: archive) { reader in
+        try reader.extract(to: destination, selection: .subtree("assets"))
+        return reader.entries
+    }
+}
+```
+
+The body is `@Sendable` and the result must be `Sendable`. Keep sessions inside the body;
+return copied metadata or data instead. The body and stream callbacks are synchronous:
+they cannot suspend or access main-actor state. Do not synchronously wait for another async
+archive job from a worker callback. Async producers and `AsyncSequence` are not provided.
+
+Caller cancellation is explicitly forwarded to the worker; task-local values and task identity
+are not. A cancelled queued job skips its body upon admission. Running jobs check cancellation
+between chunks and before publication. Await returns only after finalization and cleanup, and
+cannot interrupt native calls or user callbacks. Body code that performs no archive operations
+must finish or throw on its own. Cancellation after the final publication checkpoint may still
+return success with the published output; no post-publication cancellation check removes it.
+
 ## Streaming reads
 
 ```swift
