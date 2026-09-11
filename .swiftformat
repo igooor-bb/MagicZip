@@ -1,0 +1,12 @@
+--swiftversion 6.2
+--indent 4
+--maxwidth 140
+--wraparguments before-first
+--wrapcollections before-first
+--importgrouping alphabetized,testable-last
+--self remove
+--trimwhitespace always
+--header strip
+--blank-line-after-switch-case always
+--trailing-commas always
+--exclude Sources/CMinizip,.build,.swiftpm,Pods,Validation/PodClient/Pods,Validation/PodClient/Client.xcodeproj

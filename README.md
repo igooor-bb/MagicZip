@@ -112,18 +112,22 @@ local/CI tasks. Install mise and Xcode 26+, then:
 ```sh
 mise trust
 mise install
+mise run setup        # locked Python fixture tools and CocoaPods/xcodeproj
 mise run format       # SwiftFormat + clang-format, owned code only
 mise run format-check # checks both Swift and C
 mise run lint         # SwiftLint
 mise run test         # Swift Testing
 mise run check        # format-check, lint, test
-./Scripts/validate-apple.sh
+mise run validate-apple
+mise run validate-pods
 ```
 
-SwiftFormat 0.62.1, SwiftLint 0.65.1 and clang-format 22.1.8 are pinned. Vendored code is excluded
+SwiftFormat 0.62.1, SwiftLint 0.65.1, clang-format 22.1.8, Python 3.14.7, uv 0.12.11 and Ruby 3.4.10 are pinned.
+`uv.lock` fixes Python fixture dependencies; `Gemfile.lock` fixes CocoaPods/xcodeproj and transitive gems.
+Use `uv run --locked --group fixtures` and `bundle exec` through the mise tasks. Vendored code is excluded
 from formatting/linting. Apple validation builds macOS, iOS device and Simulator plus DocC.
-See [Validation](Validation/README.md) for real CocoaPods clients, independent SSZipArchive
-interoperability, RSS measurements and fixture regeneration. Public declarations have DocC
+See [the completed validation report](Validation/RESULTS.md) and [Validation](Validation/README.md) for real CocoaPods clients, independent ZIP
+compatibility, RSS measurements and fixture regeneration. Public declarations have DocC
 comments and the catalog lives in `Sources/MagicZip/MagicZip.docc`.
 
 ## Updating minizip-ng
@@ -143,7 +147,7 @@ See [the importer guide](Scripts/minizip/README.md). Repeat the import and verif
 
 C symbol isolation is generated for all upstream `mz_*` identifiers, including globals, using
 `magiczip_` names. The compatibility API is not compiled. A Clang module name alone would not
-prevent collisions; the validation client links and exercises both libraries in one process.
+prevent collisions; private validation links an independent ZIP implementation in the same process.
 
 ## License
 

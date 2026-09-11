@@ -4,6 +4,29 @@ import Testing
 @testable import MagicZip
 
 struct ArchiveTests {
+    @Test(arguments: ["sszip-plain.zip", "sszip-aes.zip"])
+    func `independent reference fixtures`(name: String) throws {
+        let password = name.contains("aes") ? "interop-password" : nil
+        try ZIPReader.withArchive(at: fixture(name)) { reader in
+            let data = try reader.data(path: "source.txt", password: password)
+            #expect(data == Data("SSZipArchive and MagicZip coexist — Привет!".utf8))
+        }
+    }
+
+    @Test func `sliced data and bounded producer`() throws {
+        try temporaryDirectory { root in
+            let archive = root.appendingPathComponent("sliced.zip")
+            let original = Data([0, 1, 2, 3])
+            try ZIPWriter.withArchive(at: archive) { writer in
+                try writer.add(data: original.dropFirst(), path: "slice")
+            }
+            try ZIPReader.withArchive(at: archive) { reader in
+                let actual = try reader.data(path: "slice")
+                #expect(actual == Data([1, 2, 3]))
+            }
+        }
+    }
+
     @Test func `independent plain and ZIP 64`() throws {
         let snapshot = try ZIPReader.withArchive(at: fixture("python.zip")) { reader in
             #expect(reader.entries.count == 7)

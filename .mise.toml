@@ -1,0 +1,55 @@
+[tools]
+swiftformat = "0.62.1"
+swiftlint = "0.65.1"
+"pipx:clang-format" = "22.1.8"
+python = "3.14.7"
+uv = "0.12.11"
+ruby = "3.4.10"
+
+[env]
+BUNDLE_PATH = "{{config_root}}/.bundle/gems"
+BUNDLE_FROZEN = "true"
+
+[tasks.format]
+description = "Format owned Swift sources"
+run = ["swiftformat .", "./Scripts/format-c.sh"]
+
+[tasks."format-check"]
+description = "Check Swift formatting"
+run = ["swiftformat --lint .", "./Scripts/format-c.sh --check"]
+
+[tasks.lint]
+description = "Lint owned Swift sources"
+run = "swiftlint --strict"
+
+[tasks.test]
+description = "Run Swift Testing suite"
+run = "swift test"
+
+[tasks.check]
+description = "Run the same checks locally and in CI"
+depends = ["format-check", "lint", "test"]
+
+[tasks.setup]
+description = "Install locked fixture and CocoaPods dependencies"
+run = ["uv sync --locked --group fixtures", "gem install bundler --version 2.7.1 --no-document", "bundle _2.7.1_ install"]
+
+[tasks."fixtures-python"]
+description = "Regenerate independent Python fixtures with locked dependencies"
+run = "uv run --locked --group fixtures python Scripts/generate-fixtures.py"
+
+[tasks."validate-apple"]
+description = "Build Apple platforms and DocC"
+run = "./Scripts/validate-apple.sh"
+
+[tasks."validate-pods"]
+description = "Build real CocoaPods clients and validate podspecs"
+run = "./Scripts/validate-pods.sh"
+
+[tasks."validate-compatibility"]
+description = "Verify independent ZIP compatibility and C symbol isolation"
+run = "./Scripts/validate-compatibility.sh"
+
+[tasks."validate-memory"]
+description = "Measure peak RSS and selective extraction on a 512 MiB archive"
+run = "swift run -c release --package-path Validation/StreamingProbe"

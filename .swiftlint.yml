@@ -1,0 +1,24 @@
+included:
+  - Sources/MagicZip
+  - Tests
+  - Validation/Compatibility/Sources
+  - Validation/StreamingProbe/Sources
+  - Validation/PodClient/main.swift
+excluded:
+  - Sources/CMinizip
+  - .build
+line_length:
+  warning: 140
+  error: 160
+  ignores_comments: true
+  ignores_urls: true
+disabled_rules:
+  - opening_brace
+  - file_length
+  - type_body_length
+  - function_body_length
+  - function_parameter_count
+  - identifier_name
+  - trailing_comma
+  - cyclomatic_complexity
+  - large_tuple

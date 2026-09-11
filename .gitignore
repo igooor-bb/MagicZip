@@ -7,3 +7,7 @@ Pods/
 Sources/CMinizip/.import*
 Validation/PodClient/Podfile.lock
 Validation/PodClient/Client.xcodeproj/
+
+.venv/
+.bundle/
+__pycache__/

@@ -1,0 +1,11 @@
+[project]
+name = "magiczip-maintenance"
+version = "0.1.0"
+requires-python = "==3.14.*"
+dependencies = []
+
+[dependency-groups]
+fixtures = ["pyzipper==0.4.0"]
+
+[tool.uv]
+package = false

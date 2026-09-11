@@ -1,0 +1,23 @@
+install! 'cocoapods', :deterministic_uuids => true
+project 'Client.xcodeproj'
+use_frameworks! :linkage => :static
+
+def magiczip_pods
+  pod 'MagicZip', :path => '../..'
+  pod 'MagicZipCMinizip', :path => '../..'
+  if ENV['MAGICZIP_SSZIP_SOURCE']
+    pod 'SSZipArchive', :path => ENV.fetch('MAGICZIP_SSZIP_SOURCE')
+  else
+    pod 'SSZipArchive', '2.5.5'
+  end
+end
+
+target 'ClientMac' do
+  platform :osx, '13.0'
+  magiczip_pods
+end
+
+target 'ClientIOS' do
+  platform :ios, '16.0'
+  magiczip_pods
+end

@@ -1,6 +1,6 @@
 """Generate test-only independent fixtures (Python zipfile + pyzipper 0.4.0).
 
-Run in a temporary environment with pyzipper==0.4.0 installed. AES salts are random;
+Run `mise run fixtures-python` with the checked-in uv.lock. AES salts are random;
 checked-in fixture hashes identify the exact test corpus. No runtime dependency.
 """
 from pathlib import Path

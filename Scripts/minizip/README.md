@@ -32,4 +32,4 @@ There are no timestamps or machine-specific paths in generated metadata.
 After an upstream upgrade, review the allowlist, configuration and patches, run
 `mise run check`, `Scripts/validate-apple.sh` and the interoperability/large-archive
 checks described in the repository documentation. In particular, audit global C
-symbols: Clang module names alone cannot prevent link collisions with SSZipArchive.
+symbols: Clang module names alone cannot prevent link collisions with other ZIP implementations.
