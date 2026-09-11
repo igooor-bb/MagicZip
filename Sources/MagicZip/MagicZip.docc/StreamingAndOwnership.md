@@ -4,7 +4,7 @@ Keep archive payload memory bounded and handle finalization explicitly.
 
 ## Scoped sessions
 
-``ZIPReader/withArchive(at:limits:body:)`` and ``ZIPWriter/withArchive(at:overwrite:body:)``
+``ZIPReader/withArchive(at:limits:body:)`` and ``ZIPWriter/withArchive(at:password:overwrite:body:)``
 create one native handle, invoke a synchronous throwing closure, and check closure of the
 archive before returning. The writer then publishes its temporary file atomically.
 A `deinit` is only an exception fallback, never the successful finalization path.
@@ -31,7 +31,7 @@ stored archive owner in its closed state, which supports escaped-session rejecti
 ## Asynchronous callers
 
 ``ZIPReader/withArchiveAsync(at:limits:body:)`` and
-``ZIPWriter/withArchiveAsync(at:overwrite:body:)`` suspend the calling task and run a complete
+``ZIPWriter/withArchiveAsync(at:password:overwrite:body:)`` suspend the calling task and run a complete
 synchronous session on a background queue. Up to two async sessions execute at once across
 readers and writers. Each handle is created, used and closed by its own worker job.
 
@@ -82,7 +82,7 @@ with an additional default 16 MiB budget. Prefer streaming for large payloads.
 
 ```swift
 func repeatBytes(into archive: URL, count: Int) throws {
-    try ZIPWriter.withArchive(at: archive) { writer in
+    try ZIPWriter.withArchive(at: archive, password: "example-password") { writer in
         var remaining = count
         try writer.addStream(path: "payload.bin", compression: .store) { requested in
             guard remaining > 0 else { return nil }

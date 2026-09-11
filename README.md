@@ -63,16 +63,16 @@ in library-generated errors.
 ## Create
 
 ```swift
-try ZIPWriter.withArchive(at: archiveURL, overwrite: .replace) { writer in
+try ZIPWriter.withArchive(at: archiveURL, password: "example-password", overwrite: .replace) { writer in
     try writer.add(data: Data("Hello".utf8), path: "hello.txt", compression: .store)
     try writer.add(file: sourceURL, path: "assets/source.bin",
-                   compression: .deflate(level: 9), password: "example-password")
+                   compression: .deflate(level: 9))
     try writer.addDirectory(path: "empty")
     try writer.add(directory: folderURL, path: "folder")
 }
 ```
 
-For a producer-backed stream, use `addStream(path:compression:password:modificationDate:producer:)`.
+For a producer-backed stream, use `addStream(path:compression:modificationDate:producer:)`.
 The producer receives a maximum chunk size of 64 KiB and returns a nonempty `Data` no larger
 than requested, or `nil` at EOF. Source files/directories must remain stable during reading.
 Creation uses ZIP64 for entries of unknown final size, including small streamed files.
@@ -83,10 +83,10 @@ Use `withArchiveAsync` to suspend the caller while a complete archive session ru
 background work queue. Existing synchronous APIs remain available.
 
 ```swift
-try await ZIPWriter.withArchiveAsync(at: archiveURL) { writer in
-    try writer.add(file: sourceURL, path: "assets/source.bin", password: "example-password")
+try await ZIPWriter.withArchiveAsync(at: archiveURL, password: "example-password") { writer in
+    try writer.add(file: sourceURL, path: "assets/source.bin")
 }
-let entries = try await ZIPReader.withArchiveAsync(at: archiveURL) { reader in
+let entries = try await ZIPReader.withArchiveAsync(at: archiveURL, password: "example-password") { reader in
     try reader.extract(to: outputURL, selection: .subtree("assets"), password: "example-password")
     return reader.entries
 }
@@ -207,3 +207,39 @@ Both borrow bytes across internal file/C boundaries; public callbacks still rece
 owned `Data`. CRC, AES
 HMAC and size checks remain enabled. See [validation](Validation/README.md) for reproducible
 performance measurements and the separate resource-limited tree checks.
+
+### Password APIs
+
+`ZIPWriter.withArchive(at:password:overwrite:body:)` sets one optional password for
+all regular files, including files added through trees and producers. Its `add`
+methods do not accept passwords. `nil` creates plaintext files. Explicit directory
+entries remain unencrypted. Passwords are validated before the writer body runs.
+
+Use `MixedZIPWriter` when entries intentionally have different passwords. Each
+`add` / `addStream` requires an explicit `password:`; pass `nil` for plaintext.
+Both writer types have `withArchiveAsync` and share the same transaction, limits,
+exclusive handle ownership and failure cleanup.
+
+```swift
+try MixedZIPWriter.withArchive(at: archiveURL) { writer in
+    try writer.add(data: first, path: "first.txt", password: "first-password")
+    try writer.add(data: second, path: "second.txt", password: "second-password")
+    try writer.add(data: readme, path: "README.txt", password: nil)
+}
+try ZIPReader.withArchive(at: archiveURL) { reader in
+    try reader.extract(to: outputURL) { entry in
+        passwordsByPath[entry.path]
+    }
+}
+```
+
+`extract(to:selection:overwrite:passwordProvider:)` invokes its synchronous throwing
+provider once per selected encrypted entry, never for plaintext or unselected entries.
+A missing/wrong password or provider error rolls back extraction. Password retries and
+caching are the caller's responsibility. Do not reenter the reader from the provider.
+Names and other ZIP metadata are visible without a password and are untrusted input.
+The single-password extraction overload delegates to this same implementation.
+
+Migration: move `password:` from ordinary writer additions to `withArchive` (or
+`withArchiveAsync`), or explicitly choose `MixedZIPWriter` and specify passwords
+on every addition. Scoped lifetimes and atomic publication are unchanged.

@@ -11,8 +11,8 @@ private enum PodClientValidation {
         let root = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         let archive = root.appendingPathComponent("client.zip")
-        try await ZIPWriter.withArchiveAsync(at: archive) { writer in
-            try writer.add(data: payload, path: "hello", password: password)
+        try await ZIPWriter.withArchiveAsync(at: archive, password: password) { writer in
+            try writer.add(data: payload, path: "hello")
         }
         try await verifyMagicZip(archive)
         try verifyReferenceReader(archive, root: root)

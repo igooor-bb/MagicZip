@@ -163,6 +163,19 @@ public final class ZIPReader {
         password: String? = nil,
         overwrite: ZIPOverwrite = .fail,
     ) throws {
+        try extract(to: destination, selection: selection, overwrite: overwrite, passwordProvider: { _ in password })
+    }
+
+    /// Extracts atomically, resolving a password once for each selected encrypted entry.
+    /// Plaintext entries do not call the provider. Nil or an incorrect password fails extraction;
+    /// provider errors propagate and remove staging output. No password cache or retries are implicit.
+    /// Entry metadata is untrusted archive input. The provider must not reenter this reader.
+    public func extract(
+        to destination: URL,
+        selection: ZIPSelection = .all,
+        overwrite: ZIPOverwrite = .fail,
+        passwordProvider: (ZIPEntry) throws -> String?,
+    ) throws {
         try operation {
             try checkCancellation(cancellation)
             let selected = try select(selection)
@@ -171,6 +184,7 @@ public final class ZIPReader {
                 var total: Int64 = 0
                 for entry in selected {
                     try checkCancellation(cancellation)
+                    let password = entry.encryption == .none ? nil : try passwordProvider(entry)
                     let parts = try EntryPaths.components(entry.path, directory: entry.isDirectory)
                     if entry.isDirectory {
                         let directory = try FileSystem.directory(at: transaction.directory, components: parts[...])

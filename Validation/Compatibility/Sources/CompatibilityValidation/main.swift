@@ -36,8 +36,8 @@ private enum ZIPCompatibilityValidation {
 
     static func readMagicZip(root: URL, password: String?) throws {
         let archive = root.appendingPathComponent("own.zip")
-        try ZIPWriter.withArchive(at: archive, overwrite: .replace) {
-            try $0.add(data: payload, path: "source.txt", password: password)
+        try ZIPWriter.withArchive(at: archive, password: password, overwrite: .replace) {
+            try $0.add(data: payload, path: "source.txt")
         }
         let output = root.appendingPathComponent(password == nil ? "ss-out-plain" : "ss-out-aes")
         try SSZipArchive.unzipFile(atPath: archive.path, toDestination: output.path, overwrite: true, password: password)

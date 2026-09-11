@@ -99,10 +99,10 @@ struct ArchiveTests {
     @Test func `writer round trip and lifetime`() throws {
         try temporaryDirectory { root in
             let archive = root.appendingPathComponent("test.zip")
-            var escaped: ZIPWriter?
-            try ZIPWriter.withArchive(at: archive) { writer in
+            var escaped: MixedZIPWriter?
+            try MixedZIPWriter.withArchive(at: archive) { writer in
                 escaped = writer
-                try writer.add(data: Data("hello".utf8), path: "hello", compression: .store)
+                try writer.add(data: Data("hello".utf8), path: "hello", compression: .store, password: nil)
                 try writer.add(data: Data(repeating: 42, count: 1000), path: "secret", password: "пароль")
                 try writer.add(data: Data(), path: "empty", password: "пароль")
                 try writer.addDirectory(path: "directory")

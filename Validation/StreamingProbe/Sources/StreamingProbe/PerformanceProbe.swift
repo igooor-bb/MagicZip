@@ -14,12 +14,12 @@ enum PerformanceProbe {
         let start = ContinuousClock.now
         switch operation {
         case "write":
-            try ZIPWriter.withArchive(at: archive, overwrite: .replace) {
-                try $0.add(file: root.appendingPathComponent("payload"), path: "payload", compression: compression, password: password)
+            try ZIPWriter.withArchive(at: archive, password: password, overwrite: .replace) {
+                try $0.add(file: root.appendingPathComponent("payload"), path: "payload", compression: compression)
             }
         case "tree":
-            try ZIPWriter.withArchive(at: archive, overwrite: .replace) {
-                try $0.add(directory: root.appendingPathComponent("small"), path: "small", compression: compression, password: password)
+            try ZIPWriter.withArchive(at: archive, password: password, overwrite: .replace) {
+                try $0.add(directory: root.appendingPathComponent("small"), path: "small", compression: compression)
             }
         case "read":
             var count: Int64 = 0

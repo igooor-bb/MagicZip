@@ -7,9 +7,9 @@ struct AsyncArchiveTests {
     @MainActor @Test func `async scopes leave the main thread and return owned values`() async throws {
         try await withAsyncDirectory { root in
             let archive = root.appendingPathComponent("archive.zip")
-            let count = try await ZIPWriter.withArchiveAsync(at: archive) { writer in
+            let count = try await ZIPWriter.withArchiveAsync(at: archive, password: "secret") { writer in
                 #expect(!Thread.isMainThread)
-                try writer.add(data: Data("hello".utf8), path: "assets/hello", password: "secret")
+                try writer.add(data: Data("hello".utf8), path: "assets/hello")
                 try writer.addDirectory(path: "empty")
                 return 2
             }

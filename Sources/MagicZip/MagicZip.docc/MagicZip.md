@@ -13,10 +13,10 @@ import Foundation
 import MagicZip
 
 func example(archive: URL, destination: URL) throws {
-    try ZIPWriter.withArchive(at: archive) { writer in
+    try ZIPWriter.withArchive(at: archive, password: "example-password") { writer in
         try writer.addDirectory(path: "documents")
         try writer.add(data: Data("Hello".utf8), path: "documents/hello.txt",
-                       compression: .deflate(level: 6), password: "example-password")
+                       compression: .deflate(level: 6))
     }
     try ZIPReader.withArchive(at: archive) { reader in
         let entry = reader.entry(at: "documents/hello.txt")
@@ -51,7 +51,7 @@ separators. Neither extraction nor archive creation follows symlinks.
 ### Asynchronous sessions
 
 - ``ZIPReader/withArchiveAsync(at:limits:body:)``
-- ``ZIPWriter/withArchiveAsync(at:overwrite:body:)``
+- ``ZIPWriter/withArchiveAsync(at:password:overwrite:body:)``
 
 ### Failure handling and ownership
 

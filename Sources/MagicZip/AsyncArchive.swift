@@ -40,46 +40,6 @@ public extension ZIPReader {
     }
 }
 
-public extension ZIPWriter {
-
-    /// Creates and atomically publishes an archive on a bounded background work queue.
-    ///
-    /// The calling task suspends while the synchronous body adds data, files, directories or
-    /// producer streams. The writer owns its handle inside the body only and is not `Sendable`.
-    /// Do not retain it, use it concurrently or reenter it. Captures and results must be
-    /// `Sendable`; the body cannot suspend or access main-actor state. Sources must remain stable.
-    /// - Parameters:
-    ///   - url: Destination ZIP file whose existing parent has no symlink path components.
-    ///   - overwrite: Fail if a destination exists, or atomically replace a regular file.
-    ///   - body: Synchronous background work adding archive entries.
-    /// - Returns: The body's result after checked finalization, publication and staging cleanup.
-    /// - Throws: The same errors as ``withArchive(at:overwrite:body:)``. Body errors propagate;
-    ///   simultaneous cleanup errors are preserved in ``ZIPError/combined(primary:cleanup:)``.
-    ///
-    /// At most two async archive bodies run simultaneously across readers and writers. Queued
-    /// cancelled jobs skip their body when admitted. Running jobs observe caller cancellation
-    /// at archive checkpoints, including immediately before publication, even if the body
-    /// catches a cancellation error. Await waits for finalization and cleanup. Native calls
-    /// and user callbacks cannot be interrupted. Cancellation after the final checkpoint may
-    /// still yield a published archive and success; publication is not rolled back.
-    /// Task-local values and current-task identity are not propagated into the body.
-    ///
-    /// ```swift
-    /// try await ZIPWriter.withArchiveAsync(at: archiveURL) { writer in
-    ///     try writer.add(file: sourceURL, path: "assets/source.bin", password: "example-password")
-    /// }
-    /// ```
-    static func withArchiveAsync<T: Sendable>(
-        at url: URL,
-        overwrite: ZIPOverwrite = .fail,
-        body: @escaping @Sendable (ZIPWriter) throws -> T,
-    ) async throws -> T {
-        try await ArchiveExecutor.shared.run { cancellation in
-            try withArchive(at: url, overwrite: overwrite, cancellation: cancellation, body: body)
-        }
-    }
-}
-
 /// Only this locked flag crosses from the cancelling task to the synchronous worker.
 final class ArchiveCancellation: @unchecked Sendable {
     private let lock = NSLock()

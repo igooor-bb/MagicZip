@@ -97,8 +97,8 @@ struct FailureTests {
                 }
             }
             #expect(throws: ZIPError.self) {
-                try ZIPWriter.withArchive(at: root.appendingPathComponent("bad.zip")) {
-                    try $0.add(data: Data(), path: "a", password: "")
+                try ZIPWriter.withArchive(at: root.appendingPathComponent("bad.zip"), password: "") {
+                    try $0.add(data: Data(), path: "a")
                 }
             }
             let matches2 = try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty
