@@ -45,3 +45,8 @@ size after CDCD decryption, so random access into later inner records failed. Th
 adapter implements CDCD framing using the existing low-level API, with checked
 closure/HMAC, a 64 MiB catalog budget and Swift cancellation checkpoints; the upstream
 high-level `mz_zip_rw` layer is intentionally not imported.
+
+`0005-match-symlink-buffer-capacity-type.patch` declares the fixed 1024-byte symlink
+read buffer capacity as `const int32_t`, matching `mz_os_read_symlink`. This removes
+the implicit `size_t` narrowing warning without suppressing diagnostics or changing
+the allocation size or runtime behavior.

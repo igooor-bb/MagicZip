@@ -258,6 +258,8 @@ final class ArchiveWriter {
         producer: (_ consume: (UnsafeRawBufferPointer) throws -> Void) throws -> Void,
     ) throws {
         try checkCancellation(cancellation)
+        // Application budgets for retained names/tree nodes, not ZIP64 capacity limits.
+        // Keep these consistent with EntryPaths defaults and the tree-enumeration budget below.
         guard entryCount < 100_000, path.utf8.count <= 16 * 1024 * 1024 - pathBytes else {
             throw ZIPError.limitExceeded("Writer metadata")
         }
@@ -266,10 +268,15 @@ final class ArchiveWriter {
         pathBytes += path.utf8.count
         let method: Int16
         let level: Int16
+        // ZIP method IDs: 0 = Store, 8 = Deflate (APPNOTE 4.4.5).
+        // https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
         switch compression {
-        case .store: method = 0
+        case .store:
+            method = 0
             level = 0
         case let .deflate(value):
+            // zlib accepts explicit levels 0...9; -1 is its default sentinel, not part of our API.
+            // https://zlib.net/manual.html (deflateInit)
             guard (0 ... 9).contains(value) else {
                 throw ZIPError.invalidArgument("Deflate level must be in 0...9")
             }
@@ -277,13 +284,16 @@ final class ArchiveWriter {
             level = Int16(value)
         }
         let timestamp = modificationDate.timeIntervalSince1970
+        // UTC epoch bounds: 1980-01-01 through 2107-12-31 23:59:59. DOS dates encode
+        // a 7-bit year offset from 1980 (APPNOTE 4.4.6). These API bounds are UTC; minizip
+        // encodes local time, so this guard alone does not ensure boundary-date fidelity.
         guard timestamp.isFinite, timestamp >= 315_532_800, timestamp <= 4_354_819_199 else {
             throw ZIPError.invalidArgument("ZIP timestamps must lie between 1980 and 2107")
         }
         try withPassword(password) { password in
             try check(
                 magiczip_write_open(native.pointer, path, directory ? 1 : 0, method, level, Int64(timestamp), password),
-                "open output entry",
+                .openOutputEntry,
                 path: path,
             )
             try completing {
@@ -297,10 +307,10 @@ final class ArchiveWriter {
                         received = true
                         let written = magiczip_write(native.pointer, bytes.baseAddress, Int32(bytes.count))
                         if written < 0 {
-                            try check(written, "write entry", path: path)
+                            try check(written, .writeEntry, path: path)
                         }
                         guard written == bytes.count else {
-                            throw ZIPError.backend(operation: "short write", path: path, status: -116)
+                            throw ZIPError.backend(operation: .shortWrite, path: path, status: -116)
                         }
                     }
                     if !received {
@@ -308,7 +318,7 @@ final class ArchiveWriter {
                     }
                 }
             } cleanup: {
-                try check(magiczip_write_close(native.pointer), "finalize entry", path: path)
+                try check(magiczip_write_close(native.pointer), .finalizeEntry, path: path)
             }
         }
     }

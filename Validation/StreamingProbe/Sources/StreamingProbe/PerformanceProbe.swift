@@ -44,7 +44,8 @@ enum PerformanceProbe {
             try ZIPReader.withArchive(at: root, limits: limits) { guard $0.entries.count == 1 else {
                 throw ProbeError.empty
             } }
-        default: throw ProbeError.argument
+        default:
+            throw ProbeError.argument
         }
         let duration = start.duration(to: .now)
         let seconds = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18

@@ -345,7 +345,8 @@ int32_t mz_dir_has_unsafe_symlink(const char *path, const char *base_path) {
     char *symlink_target = NULL;
     size_t path_len = 0;
     size_t base_len = 0;
-    size_t max_path = 1024;
+    /* Match mz_os_read_symlink's capacity type; this fixed positive size also fits calloc. */
+    const int32_t max_path = 1024;
     size_t pos = 0;
     size_t cmp_len = 0;
     int32_t err = MZ_OK;

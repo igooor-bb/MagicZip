@@ -91,7 +91,7 @@ struct ReliabilityTests {
                     }
                 },
                 afterClose: { closed += 1
-                    throw ZIPError.backend(operation: "injected close", path: nil, status: -116)
+                    throw ZIPError.backend(operation: .closeArchive, path: nil, status: -116)
                 },
             )
             Issue.record("Expected initialization failure")

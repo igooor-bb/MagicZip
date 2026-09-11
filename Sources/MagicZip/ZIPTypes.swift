@@ -11,8 +11,8 @@ public indirect enum ZIPError: Error {
     /// - Parameters:
     ///   - operation: The operation that failed.
     ///   - path: The entry path, when applicable.
-    ///   - status: The underlying minizip status code.
-    case backend(operation: String, path: String?, status: Int32)
+    ///   - status: The original minizip status code; use backendStatus for its typed interpretation.
+    case backend(operation: ZIPBackendOperation, path: String?, status: Int32)
 
     /// A filesystem operation failed with a POSIX error number.
     case fileSystem(operation: String, path: String, code: Int32)
@@ -138,6 +138,8 @@ public struct ZIPLimits: Sendable {
     ///   - maximumCompressionRatio: Expansion-ratio budget; defaults to 1,000.
     ///   - maximumPathDepth: Components per path, including the final name; defaults to 256.
     ///   - maximumPathNodes: Distinct components with parents, including implicit directories; defaults to 100,000.
+    /// These defaults bound application work and memory; none is a ZIP/ZIP64 format maximum.
+    /// The ratio check is a decompression-bomb policy and may reject legitimate repetitive data.
     public init(
         maximumEntries: Int = 100_000,
         maximumPathBytes: Int = 16 * 1024 * 1024,

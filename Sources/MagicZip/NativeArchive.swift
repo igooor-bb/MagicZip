@@ -9,12 +9,12 @@ struct NativeArchive: ~Copyable {
     init(fileDescriptor: consuming FileDescriptor, writing: Bool) throws {
         var pointer: OpaquePointer?
         // The adapter consumes the descriptor on every path, including failure to open.
-        try check(magiczip_open(fileDescriptor.takeRawValue(), writing ? 1 : 0, &pointer), "open archive")
+        try check(magiczip_open(fileDescriptor.takeRawValue(), writing ? 1 : 0, &pointer), .openArchive)
         self.pointer = pointer
     }
 
     mutating func close() throws {
-        try check(magiczip_close(&pointer), "close archive")
+        try check(magiczip_close(&pointer), .closeArchive)
     }
 
     deinit {
@@ -29,6 +29,7 @@ struct StreamBuffer: ~Copyable {
     private let bytes: UnsafeMutableRawBufferPointer
 
     init(count: Int) {
+        // Conservative buffer alignment, not a ZIP/AES format requirement.
         bytes = .allocate(byteCount: count, alignment: 16)
     }
 
@@ -39,7 +40,10 @@ struct StreamBuffer: ~Copyable {
     deinit { bytes.deallocate() }
 }
 
-func check(_ status: Int32, _ operation: String, path: String? = nil) throws {
+/// Status values retain minizip meanings across the private C bridge: -100 end-of-list,
+/// -103 invalid format, -107 absent item, -108 password required, -116 write failure.
+/// https://github.com/zlib-ng/minizip-ng/blob/4.2.2/mz.h
+func check(_ status: Int32, _ operation: ZIPBackendOperation, path: String? = nil) throws {
     guard status == 0 else {
         throw ZIPError.backend(operation: operation, path: path, status: status)
     }
@@ -49,6 +53,9 @@ func withPassword<T>(_ password: String?, _ body: (UnsafePointer<CChar>?) throws
     guard let password else {
         return try body(nil)
     }
+    // minizip caps strlen(password) at MZ_AES_PW_LENGTH_MAX (128 bytes); NUL would truncate it.
+    // Rejecting an empty password is our API policy, not an AES requirement.
+    // https://github.com/zlib-ng/minizip-ng/blob/4.2.2/mz_strm_wzaes.c
     guard !password.utf8.contains(0), (1 ... 128).contains(password.utf8.count) else {
         throw ZIPError.invalidArgument("Passwords must contain 1...128 UTF-8 bytes and no NUL")
     }
@@ -95,15 +102,18 @@ struct EntryPaths {
     }
 
     static func components(_ path: String, directory: Bool, maximumDepth: Int = Int.max) throws -> [String] {
+        // ZIP filename length is a 16-bit byte count, even in ZIP64 (APPNOTE 4.4.10).
+        // https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
         guard path.utf8.count <= Int(UInt16.max) else {
             throw ZIPError.unsafePath(path)
         }
         let name = directory && path.hasSuffix("/") ? String(path.dropLast()) : path
-        // Count before allocating component strings or doing Unicode folding.
+        // 47 is the UTF-8 byte for "/"; count before allocating strings or Unicode folding.
         let depth = name.utf8.reduce(1) { $1 == 47 ? $0 + 1 : $0 }
         guard depth <= maximumDepth else {
             throw ZIPError.limitExceeded("Path components")
         }
+        // The 255-byte component cap below is our filesystem-portability policy, not a ZIP field limit.
         let parts = name.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
         guard
             !name.isEmpty, !name.hasPrefix("/"), !name.contains("\\"), !name.contains(":"),

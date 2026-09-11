@@ -229,7 +229,8 @@ public final class ZIPReader {
 
     private func select(_ selection: ZIPSelection) throws -> [ZIPEntry] {
         switch selection {
-        case .all: return entries
+        case .all:
+            return entries
         case let .paths(paths):
             for path in paths where entry(at: path) == nil {
                 throw ZIPError.entryNotFound(path)
@@ -258,22 +259,26 @@ public final class ZIPReader {
         total: inout Int64,
         consumer: (UnsafeRawBufferPointer) throws -> Void,
     ) throws {
+        // Per-callback allocation policy: 64 KiB by default, at most 1 MiB; not a ZIP limit.
         guard (1 ... 1024 * 1024).contains(chunkSize) else {
             throw ZIPError.invalidArgument("chunkSize must be in 1...1048576")
         }
+        // APPNOTE 4.4.5: Store = 0, Deflate = 8. minizip resolves AES marker 99
+        // to the actual method from the AES extra field before exposing this metadata.
+        // https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
         guard [0, 8].contains(entry.compressionMethod), entry.encryption != .unsupported else {
             throw ZIPError.unsupported(path: entry.path, feature: "Compression or encryption")
         }
         if entry.encryption == .aes256, password == nil {
-            throw ZIPError.backend(operation: "open encrypted entry", path: entry.path, status: -108)
+            throw ZIPError.backend(operation: .openEncryptedEntry, path: entry.path, status: -108)
         }
         guard entry.uncompressedSize <= limits.maximumTotalBytes - total else {
             throw ZIPError.limitExceeded(entry.path)
         }
-        try check(magiczip_seek(native.pointer, entry.position), "seek entry", path: entry.path)
+        try check(magiczip_seek(native.pointer, entry.position), .seekEntry, path: entry.path)
         // Keep the password buffer alive for the complete native entry lifetime.
         try withPassword(entry.encryption == .none ? nil : password) { password in
-            try check(magiczip_read_open(native.pointer, password), "open entry", path: entry.path)
+            try check(magiczip_read_open(native.pointer, password), .openEntry, path: entry.path)
             var verified = false
             try completing {
                 var produced: Int64 = 0
@@ -282,7 +287,7 @@ public final class ZIPReader {
                     try checkCancellation(cancellation)
                     let count = magiczip_read(native.pointer, &buffer, Int32(buffer.count))
                     guard count >= 0 else {
-                        try check(count, "read entry", path: entry.path)
+                        try check(count, .readEntry, path: entry.path)
                         return
                     }
                     if count == 0 {
@@ -303,7 +308,7 @@ public final class ZIPReader {
                 }
                 verified = true
             } cleanup: {
-                try check(magiczip_read_close(native.pointer, verified ? 1 : 0), "verify/close entry", path: entry.path)
+                try check(magiczip_read_close(native.pointer, verified ? 1 : 0), .verifyAndCloseEntry, path: entry.path)
             }
         }
     }
@@ -314,7 +319,7 @@ public final class ZIPReader {
         cancellation: ArchiveCancellation?,
     ) throws -> [ZIPEntry] {
         var count: UInt64 = 0
-        try check(magiczip_count(pointer, &count), "count entries")
+        try check(magiczip_count(pointer, &count), .countEntries)
         guard count <= limits.maximumEntries else {
             throw ZIPError.limitExceeded("Entry count")
         }
@@ -322,14 +327,15 @@ public final class ZIPReader {
         var paths = EntryPaths(maximumDepth: limits.maximumPathDepth, maximumNodes: limits.maximumPathNodes)
         var pathBytes = 0
         var status = magiczip_first(pointer)
+        // MZ_END_OF_LIST is normal termination; every other nonzero status is an error.
         while status != -100 {
             try checkCancellation(cancellation)
-            try check(status, "enumerate entries")
+            try check(status, .enumerateEntries)
             guard entries.count < limits.maximumEntries else {
                 throw ZIPError.limitExceeded("Entry count")
             }
             var info = magiczip_info()
-            try check(magiczip_metadata(pointer, &info), "read metadata")
+            try check(magiczip_metadata(pointer, &info), .readMetadata)
             guard let name = info.name else {
                 throw ZIPError.unsafePath("")
             }
@@ -343,6 +349,9 @@ public final class ZIPReader {
             pathBytes += bytes.count
             let directory = info.directory != 0
             try paths.insert(path, directory: directory)
+            // APPNOTE 4.4.2: high byte of made_by identifies UNIX (3) or Darwin (19).
+            // For these hosts minizip stores POSIX mode in the upper 16 attribute bits.
+            // A zero type is tolerated for producers that omit it; explicit special types are rejected.
             let unixType = (info.attributes >> 16) & UInt32(S_IFMT)
             guard info.symlink == 0, ![3, 19].contains(info.made_by >> 8) || [0, UInt32(S_IFREG), UInt32(S_IFDIR)].contains(unixType)
             else {
@@ -352,7 +361,7 @@ public final class ZIPReader {
                 throw ZIPError.unsupported(path: path, feature: "Split archive")
             }
             guard info.compressed_size >= 0, info.uncompressed_size >= 0 else {
-                throw ZIPError.backend(operation: "validate sizes", path: path, status: -103)
+                throw ZIPError.backend(operation: .validateSizes, path: path, status: -103)
             }
             guard
                 info.uncompressed_size <= limits.maximumEntryBytes,
@@ -363,6 +372,9 @@ public final class ZIPReader {
             guard !directory || info.uncompressed_size == 0 else {
                 throw ZIPError.conflictingPath(path)
             }
+            // WinZip AES: general-purpose bit 0 = encrypted, vendor versions 1/2 = AE-1/AE-2,
+            // strength code 3 = AES-256 (not a byte count). Other encryption is unsupported.
+            // https://www.winzip.com/en/support/aes-encryption/ (AES extra data field)
             let encrypted = info.flags & 1 != 0
             let encryption: ZIPEncryption = encrypted
                 ? ([1, 2].contains(info.aes_version) && info.aes_strength == 3 ? .aes256 : .unsupported) : .none
@@ -382,7 +394,7 @@ public final class ZIPReader {
             status = magiczip_next(pointer)
         }
         guard entries.count == count else {
-            throw ZIPError.backend(operation: "validate entry count", path: nil, status: -103)
+            throw ZIPError.backend(operation: .validateEntryCount, path: nil, status: -103)
         }
         return entries
     }

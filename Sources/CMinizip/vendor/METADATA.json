@@ -31,6 +31,10 @@
     {
       "file": "0004-update-replaced-catalog-bounds.patch",
       "sha256": "49dba9974055b293c00e9a74120372c3e47cdbfc5c806cde6c10c6a868cc68e5"
+    },
+    {
+      "file": "0005-match-symlink-buffer-capacity-type.patch",
+      "sha256": "b9f4249960106397bf8f4542e9df33097c32a0df82fbc381acf157cb0eff160b"
     }
   ],
   "ref": "4.2.2",

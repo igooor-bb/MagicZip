@@ -281,3 +281,35 @@ in addition to ordinary `ZIPLimits`. Catalog processing checks cancellation ever
 64 KiB and verifies size and AES HMAC before exposing metadata. Decrypted metadata
 then passes the same path, conflict, special-file and resource validation as ordinary
 ZIPs. Atomic publication and cleanup guarantees apply to Secure archives too.
+
+### Backend error diagnostics
+
+`ZIPError.backend` carries a typed `ZIPBackendOperation`, optional entry path, and
+original `Int32` status. `backendStatus` adds a known code, minizip symbol and readable
+message. Unknown backend codes remain intact with `code == nil`; no guessed mapping
+is applied. `localizedDescription` includes the operation, path and original status.
+Messages are English diagnostics; switch on the code to provide localized product UI.
+
+```swift
+do {
+    try ZIPReader.withArchive(at: archiveURL) { reader in
+        try reader.extract(to: outputURL, password: password)
+    }
+} catch let error as ZIPError {
+    if case let .backend(operation, path, rawStatus) = error {
+        print(operation, path ?? "archive", rawStatus)
+        if error.backendStatus?.code == .passwordError {
+            // Ask the caller for a password; retry is an explicit application decision.
+        }
+    }
+    print(error.localizedDescription)
+}
+```
+
+`integrityError` covers both CRC and AES HMAC failures: minizip uses `MZ_CRC_ERROR`
+for both, so the code alone cannot distinguish them. For `combined(primary:cleanup:)`,
+inspect each branch; `backendStatus` intentionally does not choose one and hide the
+other. Callback and cancellation errors retain their original types.
+
+Migration: code constructing backend errors uses enum cases such as `.openArchive`
+instead of operation strings. Code matching the numeric `status` keeps working.

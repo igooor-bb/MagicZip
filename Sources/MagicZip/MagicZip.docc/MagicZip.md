@@ -64,5 +64,7 @@ separators. Neither extraction nor archive creation follows symlinks.
 ### Failure handling and ownership
 
 - ``ZIPError``
+- ``ZIPBackendOperation``
+- ``ZIPBackendStatus``
 - <doc:StreamingAndOwnership>
 - <doc:SafetyAndLimits>

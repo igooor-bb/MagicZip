@@ -271,6 +271,8 @@ enum FileSystem {
             } else {
                 let directory = try reopen(parent, components: components)
                 let names = try directory.withCheckedClose(operation: "close cleanup", path: components.last!) {
+                    // Refill at most 256 names per level to bound cleanup memory, not directory size.
+                    // 255 matches the component-byte budget enforced by EntryPaths.
                     try children($0, maximum: 256, byteBudget: 256 * 255, cleanup: true)
                 }
                 if !names.isEmpty {
@@ -305,6 +307,7 @@ final class OutputTransaction {
         }
         destination = url.lastPathComponent
         parent = try FileSystem.openDirectory(url.deletingLastPathComponent())
+        // Owner-only staging: 0700 permits traversal; files use 0600 below (no execute bit).
         guard mkdirat(parent.raw, temporaryName, 0o700) == 0 else {
             throw ZIPError.fileSystem(operation: "create staging directory", path: destination, code: errno)
         }
