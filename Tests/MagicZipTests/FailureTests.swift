@@ -5,6 +5,12 @@ import Testing
 @testable import MagicZip
 
 struct FailureTests {
+    @Test func `unicode case aliases are rejected`() throws {
+        var paths = EntryPaths()
+        try paths.insert("Σ/one", directory: false)
+        #expect(throws: ZIPError.self) { try paths.insert("ς/two", directory: false) }
+    }
+
     @Test func `finalization errors are not lost`() {
         #expect(magiczip_test_finalization_failure(0) == -116)
         #expect(magiczip_test_finalization_failure(1) == -1) // Central-directory stream copy maps I/O errors to MZ_STREAM_ERROR.

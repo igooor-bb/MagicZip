@@ -70,7 +70,10 @@ struct EntryPaths {
     mutating func insert(_ path: String, directory: Bool) throws {
         let parts = try Self.components(path, directory: directory)
         // Conservatively reject case and canonical Unicode aliases on every supported filesystem.
-        let canonical = parts.map { $0.precomposedStringWithCanonicalMapping.lowercased() }
+        let canonical = parts.map {
+            $0.folding(options: .caseInsensitive, locale: Locale(identifier: "en_US_POSIX"))
+                .precomposedStringWithCanonicalMapping
+        }
         for count in 1 ... canonical.count {
             let key = canonical.prefix(count).joined(separator: "/")
             let spelling = Data(parts.prefix(count).joined(separator: "/").utf8)
