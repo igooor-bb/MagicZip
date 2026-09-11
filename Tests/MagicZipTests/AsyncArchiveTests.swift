@@ -169,7 +169,8 @@ private enum ProbeError: Error {
 }
 
 private func withAsyncDirectory(
-    isolation _: isolated (any Actor)? = #isolation, _ body: (URL) async throws -> Void,
+    isolation _: isolated (any Actor)? = #isolation,
+    _ body: (URL) async throws -> Void,
 ) async throws {
     let root = canonicalTemporaryDirectory().appendingPathComponent("MagicZipAsyncTests-" + UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -185,7 +186,9 @@ private final class WorkerPause: Sendable {
     func wait() throws {
         signal.continuation.yield(())
         signal.continuation.finish()
-        guard semaphore.wait(timeout: .now() + 10) == .success else { throw ProbeError.body }
+        guard semaphore.wait(timeout: .now() + 10) == .success else {
+            throw ProbeError.body
+        }
     }
 
     func started() async {

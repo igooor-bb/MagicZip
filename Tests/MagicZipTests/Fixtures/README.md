@@ -20,3 +20,9 @@ swift run --package-path Validation/Compatibility CompatibilityValidation Tests/
 
 AES salts are random. Regeneration intentionally changes hashes; update SHA256.json after
 review. Normal builds/tests never run the generators or install Python packages.
+
+`generate-regression-fixtures.py` adds independent Unix directories with/without trailing
+slashes, implicit parents, ordinary-file and Unicode subtree cases, depth-96 Store data and
+its CRC-corrupt copy, and Store AE-1/AE-2 entries. It is also invoked by the main generator.
+Run it with `mise exec -- uv run --locked --group fixtures python Scripts/generate-regression-fixtures.py`.
+AES salts are randomized; `SHA256.json` records the exact checked-in bytes.

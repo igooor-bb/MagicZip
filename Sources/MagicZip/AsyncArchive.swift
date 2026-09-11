@@ -1,6 +1,7 @@
 import Foundation
 
 public extension ZIPReader {
+
     /// Opens, uses and closes an archive on a bounded background work queue.
     ///
     /// The calling task suspends while the synchronous body runs off the main thread.
@@ -29,7 +30,9 @@ public extension ZIPReader {
     /// }
     /// ```
     static func withArchiveAsync<T: Sendable>(
-        at url: URL, limits: ZIPLimits = ZIPLimits(), body: @escaping @Sendable (ZIPReader) throws -> T,
+        at url: URL,
+        limits: ZIPLimits = ZIPLimits(),
+        body: @escaping @Sendable (ZIPReader) throws -> T,
     ) async throws -> T {
         try await ArchiveExecutor.shared.run { cancellation in
             try withArchive(at: url, limits: limits, cancellation: cancellation, body: body)
@@ -38,6 +41,7 @@ public extension ZIPReader {
 }
 
 public extension ZIPWriter {
+
     /// Creates and atomically publishes an archive on a bounded background work queue.
     ///
     /// The calling task suspends while the synchronous body adds data, files, directories or
@@ -66,7 +70,9 @@ public extension ZIPWriter {
     /// }
     /// ```
     static func withArchiveAsync<T: Sendable>(
-        at url: URL, overwrite: ZIPOverwrite = .fail, body: @escaping @Sendable (ZIPWriter) throws -> T,
+        at url: URL,
+        overwrite: ZIPOverwrite = .fail,
+        body: @escaping @Sendable (ZIPWriter) throws -> T,
     ) async throws -> T {
         try await ArchiveExecutor.shared.run { cancellation in
             try withArchive(at: url, overwrite: overwrite, cancellation: cancellation, body: body)

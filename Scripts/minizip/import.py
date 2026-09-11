@@ -129,8 +129,9 @@ def prepare(ref, work):
     destination = work / "prepared"
     destination.mkdir()
     select_sources(archive, commit, destination)
-    write_configuration(destination)
     patches = apply_patches(destination)
+    # Include identifiers introduced by reviewed patches in the namespace.
+    write_configuration(destination)
     metadata = {
         "upstream": UPSTREAM, "ref": ref, "commit": commit,
         "archive_url": archive_url, "archive_sha256": sha256(archive),

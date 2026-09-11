@@ -2070,6 +2070,15 @@ int32_t mz_zip_entry_read(void *handle, void *buf, int32_t len) {
     return read;
 }
 
+/* MagicZip: expose the running CRC without relying on read_close's compressed-size gate. */
+int32_t mz_zip_entry_get_computed_crc(void *handle, uint32_t *crc) {
+    mz_zip *zip = (mz_zip *)handle;
+    if (!zip || !crc || mz_zip_entry_is_open(zip) != MZ_OK || zip->entry_raw)
+        return MZ_PARAM_ERROR;
+    *crc = zip->entry_crc32;
+    return MZ_OK;
+}
+
 int32_t mz_zip_entry_write(void *handle, const void *buf, int32_t len) {
     mz_zip *zip = (mz_zip *)handle;
     int32_t written = 0;

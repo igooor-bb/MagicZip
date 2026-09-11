@@ -5,7 +5,6 @@
 #include "vendor/mz_zip.h"
 #include <stdio.h>
 #include <unistd.h>
-#include <zlib.h>
 
 typedef struct {
     mz_stream stream;
@@ -18,7 +17,6 @@ struct magiczip_archive {
     int writing;
     int entry_open;
     int64_t read_size;
-    uint32_t read_crc;
 };
 
 static int32_t file_is_open(void *s) {
@@ -176,7 +174,6 @@ int32_t magiczip_read_open(magiczip_archive *a, const char *password) {
     int32_t err = mz_zip_entry_read_open(a->zip, 0, password);
     if (err == MZ_OK) {
         a->entry_open = 1;
-        a->read_crc = 0;
         a->read_size = 0;
     }
     return err;
@@ -188,7 +185,6 @@ int32_t magiczip_read(magiczip_archive *a, void *buffer, int32_t count) {
             return MZ_FORMAT_ERROR;
         }
         a->read_size += result;
-        a->read_crc = (uint32_t)crc32(a->read_crc, buffer, (uInt)result);
     }
     return result;
 }
@@ -211,12 +207,23 @@ int32_t magiczip_read_close(magiczip_archive *a, int verify) {
                 a->read_size != info->uncompressed_size) {
                 err = MZ_DATA_ERROR;
             }
-            if (err == MZ_OK && info->aes_version <= 1 && a->read_crc != info->crc) {
-                err = MZ_CRC_ERROR;
+            if (err == MZ_OK && info->aes_version <= 1) {
+                uint32_t computed_crc = 0;
+                err = mz_zip_entry_get_computed_crc(a->zip, &computed_crc);
+                if (err == MZ_OK && computed_crc != info->crc) {
+                    err = MZ_CRC_ERROR;
+                }
             }
             /* Upstream read_close deletes the AES stream without authenticating it. */
             if (err == MZ_OK && info->aes_version) {
                 err = mz_stream_close(((mz_stream *)compress)->base);
+                /* Store uses a raw pass-through codec whose is_open delegates to its base.
+                 * Authentication has closed AES. Rebind the raw codec to the still-open file
+                 * so checked codec closure does not mistake successful authentication for an
+                 * I/O failure. No payload is read after this point (read_close gets NULL outputs). */
+                if (err == MZ_OK && info->compression_method == MZ_COMPRESS_METHOD_STORE) {
+                    mz_stream_set_base(compress, &a->file);
+                }
             }
         }
     }

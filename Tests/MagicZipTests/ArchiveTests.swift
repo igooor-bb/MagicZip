@@ -45,7 +45,7 @@ struct ArchiveTests {
         #expect(snapshot.uncompressedSize == 20)
     }
 
-    @Test(arguments: ["aes1.zip", "aes2.zip"])
+    @Test(arguments: ["aes1.zip", "aes2.zip", "aes-store1.zip", "aes-store2.zip"])
     func `independent AES`(name: String) throws {
         try ZIPReader.withArchive(at: fixture(name)) { reader in
             let expected = Data(String(repeating: "independent AES fixture ", count: 4).utf8)
@@ -81,8 +81,16 @@ struct ArchiveTests {
     }
 
     @Test(arguments: [
-        "traversal.zip", "absolute.zip", "windows.zip", "duplicate.zip", "case-alias.zip",
-        "unicode-alias.zip", "prefix-conflict.zip", "dot.zip", "empty-component.zip", "symlink.zip",
+        "traversal.zip",
+        "absolute.zip",
+        "windows.zip",
+        "duplicate.zip",
+        "case-alias.zip",
+        "unicode-alias.zip",
+        "prefix-conflict.zip",
+        "dot.zip",
+        "empty-component.zip",
+        "symlink.zip",
     ])
     func `unsafe archives`(name: String) {
         #expect(throws: (any Error).self) { try ZIPReader.withArchive(at: fixture(name)) { _ in } }

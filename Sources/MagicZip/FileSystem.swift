@@ -2,10 +2,13 @@ import Darwin
 import Foundation
 
 struct FileDescriptor: ~Copyable {
+
     /// Borrowed POSIX value; it must not be closed or transferred while this owner is live.
     let raw: Int32
     init(_ raw: Int32, operation: String, path: String) throws {
-        guard raw >= 0 else { throw ZIPError.fileSystem(operation: operation, path: path, code: errno) }
+        guard raw >= 0 else {
+            throw ZIPError.fileSystem(operation: operation, path: path, code: errno)
+        }
         self.raw = raw
     }
 
@@ -25,8 +28,10 @@ struct FileDescriptor: ~Copyable {
     }
 
     /// Lends the descriptor to synchronous work, then checks close on success and failure.
-    consuming func withCheckedClose<T>(
-        operation: String, path: String, _ body: (borrowing FileDescriptor) throws -> T,
+    consuming func withCheckedClose<T: ~Copyable>(
+        operation: String,
+        path: String,
+        _ body: (borrowing FileDescriptor) throws -> T,
     ) throws -> T {
         let result: T
         do {
@@ -45,100 +50,242 @@ struct FileDescriptor: ~Copyable {
     deinit { _ = Darwin.close(raw) }
 }
 
+/// fdopendir consumes an FD only on success; this owner makes that boundary explicit.
+private struct DirectoryStream: ~Copyable {
+    let pointer: UnsafeMutablePointer<DIR>
+
+    init(_ descriptor: consuming FileDescriptor) throws {
+        guard let pointer = fdopendir(descriptor.raw) else {
+            let primary = ZIPError.fileSystem(operation: "enumerate directory", path: "", code: errno)
+            do { try descriptor.close(operation: "close failed enumeration", path: "") } catch {
+                throw ZIPError.combined(primary: primary, cleanup: error)
+            }
+            throw primary
+        }
+        _ = descriptor.takeRawValue()
+        self.pointer = pointer
+    }
+
+    consuming func close() throws {
+        let stream = pointer
+        discard self
+        guard closedir(stream) == 0 else {
+            throw ZIPError.fileSystem(operation: "close enumeration", path: "", code: errno)
+        }
+    }
+
+    consuming func withCheckedClose<T>(_ body: (borrowing DirectoryStream) throws -> T) throws -> T {
+        let result: T
+        do { result = try body(self) } catch {
+            let primary = error
+            do { try close() } catch { throw ZIPError.combined(primary: primary, cleanup: error) }
+            throw primary
+        }
+        try close()
+        return result
+    }
+
+    deinit { _ = closedir(pointer) }
+}
+
+struct FileIdentity: Equatable {
+    let device: dev_t
+    let inode: ino_t
+
+    init(_ info: stat) {
+        device = info.st_dev
+        inode = info.st_ino
+    }
+
+    init(_ descriptor: borrowing FileDescriptor) throws {
+        var info = stat()
+        guard fstat(descriptor.raw, &info) == 0 else {
+            throw ZIPError.fileSystem(operation: "inspect identity", path: "", code: errno)
+        }
+        self.init(info)
+    }
+}
+
 enum FileSystem {
     static func openDirectory(_ url: URL) throws -> FileDescriptor {
-        guard url.isFileURL, !url.path.utf8.contains(0) else { throw ZIPError.invalidArgument("Expected a local file URL") }
+        guard url.isFileURL, !url.path.utf8.contains(0) else {
+            throw ZIPError.invalidArgument("Expected a local file URL")
+        }
         var current = try FileDescriptor(open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC), operation: "open root", path: "/")
         for component in url.path.split(separator: "/") {
-            guard component != ".", component != ".." else { throw ZIPError.unsafePath(url.path) }
-            current = try FileDescriptor(
-                openat(current.raw, String(component), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC),
-                operation: "open directory without following symlinks", path: url.path,
-            )
+            guard component != ".", component != ".." else {
+                throw ZIPError.unsafePath(url.path)
+            }
+            current = try current.withCheckedClose(operation: "close directory component", path: String(component)) {
+                try FileDescriptor(
+                    openat($0.raw, String(component), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC),
+                    operation: "open directory without following symlinks",
+                    path: url.path,
+                )
+            }
         }
         return current
     }
 
     static func openFile(_ url: URL) throws -> FileDescriptor {
         let parent = try openDirectory(url.deletingLastPathComponent())
-        let descriptor = try FileDescriptor(
-            openat(parent.raw, url.lastPathComponent, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC),
-            operation: "open file", path: url.path,
-        )
-        var info = stat()
-        guard fstat(descriptor.raw, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {
-            throw ZIPError.unsupported(path: url.path, feature: "Only regular source files are supported")
+        return try parent.withCheckedClose(operation: "close source parent", path: url.path) { parent in
+            let descriptor = try FileDescriptor(
+                openat(parent.raw, url.lastPathComponent, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC),
+                operation: "open file",
+                path: url.path,
+            )
+            var info = stat()
+            guard fstat(descriptor.raw, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {
+                let primary = ZIPError.unsupported(path: url.path, feature: "Only regular source files are supported")
+                do { try descriptor.close(operation: "close rejected source", path: url.path) } catch {
+                    throw ZIPError.combined(primary: primary, cleanup: error)
+                }
+                throw primary
+            }
+            return descriptor
         }
-        return descriptor
     }
 
     static func directory(at parent: borrowing FileDescriptor, components: ArraySlice<String>) throws -> FileDescriptor {
         var current = try FileDescriptor(dup(parent.raw), operation: "duplicate directory", path: components.joined(separator: "/"))
         for component in components {
-            if mkdirat(current.raw, component, 0o700) != 0, errno != EEXIST {
-                throw ZIPError.fileSystem(operation: "create directory", path: component, code: errno)
+            current = try current.withCheckedClose(operation: "close output parent", path: component) { current in
+                if mkdirat(current.raw, component, 0o700) != 0, errno != EEXIST {
+                    throw ZIPError.fileSystem(operation: "create directory", path: component, code: errno)
+                }
+                return try FileDescriptor(
+                    openat(current.raw, component, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC),
+                    operation: "open output directory",
+                    path: component,
+                )
             }
-            current = try FileDescriptor(
-                openat(current.raw, component, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC),
-                operation: "open output directory", path: component,
-            )
         }
         return current
     }
 
-    static func write(_ data: Data, to descriptor: borrowing FileDescriptor, path: String) throws {
-        try data.withUnsafeBytes { bytes in
-            var offset = 0
-            while offset < bytes.count {
-                let count = Darwin.write(descriptor.raw, bytes.baseAddress?.advanced(by: offset), bytes.count - offset)
-                if count < 0, errno == EINTR {
+    static func write(_ bytes: UnsafeRawBufferPointer, to descriptor: borrowing FileDescriptor, path: String) throws {
+        var offset = 0
+        while offset < bytes.count {
+            let count = Darwin.write(descriptor.raw, bytes.baseAddress?.advanced(by: offset), bytes.count - offset)
+            if count < 0, errno == EINTR {
+                continue
+            }
+            guard count > 0 else {
+                throw ZIPError.fileSystem(operation: "write output", path: path, code: errno)
+            }
+            offset += count
+        }
+    }
+
+    /// Reopen each component from the pinned root. At most two temporary FDs are live.
+    static func reopen(_ root: borrowing FileDescriptor, components: [String]) throws -> FileDescriptor {
+        var current = try FileDescriptor(dup(root.raw), operation: "duplicate root", path: "")
+        for name in components {
+            current = try current.withCheckedClose(operation: "close traversal directory", path: name) {
+                try FileDescriptor(
+                    openat($0.raw, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC),
+                    operation: "reopen directory",
+                    path: name,
+                )
+            }
+        }
+        return current
+    }
+
+    /// A fresh directory stream is used each time; no cookies cross DIR lifetimes.
+    static func children(
+        _ descriptor: borrowing FileDescriptor,
+        maximum: Int,
+        byteBudget: Int,
+        cancellation: ArchiveCancellation? = nil,
+        cleanup: Bool = false,
+    ) throws -> [String] {
+        let copy = try FileDescriptor(
+            openat(descriptor.raw, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC),
+            operation: "open enumeration",
+            path: "",
+        )
+        let stream = try DirectoryStream(copy)
+        return try stream.withCheckedClose { stream in
+            var names: [String] = []
+            var bytes = 0
+            while true {
+                if !cleanup {
+                    try checkCancellation(cancellation)
+                }
+                errno = 0
+                guard let item = readdir(stream.pointer) else {
+                    guard errno == 0 else {
+                        throw ZIPError.fileSystem(operation: "read directory", path: "", code: errno)
+                    }
+                    return names
+                }
+                let name = withUnsafePointer(to: &item.pointee.d_name) {
+                    $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXNAMLEN) + 1) { String(cString: $0) }
+                }
+                if name == "." || name == ".." {
                     continue
                 }
-                guard count > 0 else { throw ZIPError.fileSystem(operation: "write output", path: path, code: errno) }
-                offset += count
+                guard names.count < maximum, name.utf8.count <= byteBudget - bytes else {
+                    throw ZIPError.limitExceeded("Pending source names")
+                }
+                names.append(name)
+                bytes += name.utf8.count
+                if cleanup, names.count == maximum {
+                    return names
+                }
             }
         }
     }
 
     static func remove(parent: borrowing FileDescriptor, name: String) throws {
-        var info = stat()
-        guard fstatat(parent.raw, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
-            if errno == ENOENT {
-                return
-            }
-            throw ZIPError.fileSystem(operation: "inspect cleanup", path: name, code: errno)
-        }
-        let directory = info.st_mode & S_IFMT == S_IFDIR
-        if directory {
-            let descriptor = try FileDescriptor(
-                openat(parent.raw, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC), operation: "open cleanup", path: name,
-            )
-            let copy = dup(descriptor.raw)
-            guard copy >= 0 else { throw ZIPError.fileSystem(operation: "duplicate cleanup", path: name, code: errno) }
-            guard let stream = fdopendir(copy) else {
-                _ = Darwin.close(copy)
-                throw ZIPError.fileSystem(operation: "enumerate cleanup", path: name, code: errno)
-            }
-            try completing {
-                while true {
-                    errno = 0
-                    guard let entry = readdir(stream) else {
-                        guard errno == 0 else { throw ZIPError.fileSystem(operation: "read cleanup", path: name, code: errno) }
-                        break
+        // Postorder DFS, with batches removed before re-enumeration. Frames own names, never FDs.
+        var components: [String] = []
+        var pending: [[String]] = [[name]]
+        while !pending.isEmpty {
+            if let child = pending[pending.count - 1].popLast() {
+                let directory = try reopen(parent, components: components)
+                let descend = try directory.withCheckedClose(operation: "close cleanup parent", path: child) { directory in
+                    var info = stat()
+                    guard fstatat(directory.raw, child, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
+                        if errno == ENOENT {
+                            return false
+                        }
+                        throw ZIPError.fileSystem(operation: "inspect cleanup", path: child, code: errno)
                     }
-                    let child = withUnsafePointer(to: &entry.pointee.d_name) {
-                        $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXNAMLEN) + 1) { String(cString: $0) }
+                    if info.st_mode & S_IFMT == S_IFDIR {
+                        return true
                     }
-                    if child != ".", child != ".." {
-                        try remove(parent: descriptor, name: child)
+                    guard unlinkat(directory.raw, child, 0) == 0 else {
+                        throw ZIPError.fileSystem(operation: "remove temporary output", path: child, code: errno)
+                    }
+                    return false
+                }
+                if descend {
+                    components.append(child)
+                    pending.append([])
+                }
+            } else if components.isEmpty {
+                pending.removeLast()
+            } else {
+                let directory = try reopen(parent, components: components)
+                let names = try directory.withCheckedClose(operation: "close cleanup", path: components.last!) {
+                    try children($0, maximum: 256, byteBudget: 256 * 255, cleanup: true)
+                }
+                if !names.isEmpty {
+                    pending[pending.count - 1] = names
+                    continue
+                }
+                let child = components.removeLast()
+                pending.removeLast()
+                let directoryParent = try reopen(parent, components: components)
+                try directoryParent.withCheckedClose(operation: "close cleanup parent", path: child) {
+                    guard unlinkat($0.raw, child, AT_REMOVEDIR) == 0 else {
+                        throw ZIPError.fileSystem(operation: "remove directory", path: child, code: errno)
                     }
                 }
-            } cleanup: {
-                guard closedir(stream) == 0 else { throw ZIPError.fileSystem(operation: "close cleanup", path: name, code: errno) }
             }
-        }
-        guard unlinkat(parent.raw, name, directory ? AT_REMOVEDIR : 0) == 0 else {
-            throw ZIPError.fileSystem(operation: "remove temporary output", path: name, code: errno)
         }
     }
 }
@@ -164,21 +311,31 @@ final class OutputTransaction {
         do {
             directory = try FileDescriptor(
                 openat(parent.raw, temporaryName, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC),
-                operation: "open staging directory", path: destination,
+                operation: "open staging directory",
+                path: destination,
             )
         } catch {
-            _ = unlinkat(parent.raw, temporaryName, AT_REMOVEDIR)
-            throw error
+            let primary = error
+            guard unlinkat(parent.raw, temporaryName, AT_REMOVEDIR) == 0 else {
+                throw ZIPError.combined(
+                    primary: primary,
+                    cleanup: ZIPError.fileSystem(operation: "remove failed staging", path: destination, code: errno),
+                )
+            }
+            throw primary
         }
     }
 
     func createFile(_ path: String) throws -> FileDescriptor {
         let parts = try EntryPaths.components(path, directory: false)
         let parent = try FileSystem.directory(at: directory, components: parts.dropLast())
-        return try FileDescriptor(
-            openat(parent.raw, parts[parts.count - 1], O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600),
-            operation: "create output", path: path,
-        )
+        return try parent.withCheckedClose(operation: "close output parent", path: path) { parent in
+            try FileDescriptor(
+                openat(parent.raw, parts[parts.count - 1], O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600),
+                operation: "create output",
+                path: path,
+            )
+        }
     }
 
     func publish(file: String? = nil, overwrite: ZIPOverwrite) throws {
@@ -208,7 +365,9 @@ final class OutputTransaction {
     }
 
     func cleanup() throws {
-        guard pendingCleanup else { return }
+        guard pendingCleanup else {
+            return
+        }
         try FileSystem.remove(parent: parent, name: temporaryName)
         pendingCleanup = false
     }

@@ -24,12 +24,31 @@ struct NativeArchive: ~Copyable {
     }
 }
 
+/// A single bounded allocation; borrowed bytes must not outlive the synchronous callback.
+struct StreamBuffer: ~Copyable {
+    private let bytes: UnsafeMutableRawBufferPointer
+
+    init(count: Int) {
+        bytes = .allocate(byteCount: count, alignment: 16)
+    }
+
+    borrowing func withUnsafeMutableBytes<T>(_ body: (UnsafeMutableRawBufferPointer) throws -> T) rethrows -> T {
+        try body(bytes)
+    }
+
+    deinit { bytes.deallocate() }
+}
+
 func check(_ status: Int32, _ operation: String, path: String? = nil) throws {
-    guard status == 0 else { throw ZIPError.backend(operation: operation, path: path, status: status) }
+    guard status == 0 else {
+        throw ZIPError.backend(operation: operation, path: path, status: status)
+    }
 }
 
 func withPassword<T>(_ password: String?, _ body: (UnsafePointer<CChar>?) throws -> T) throws -> T {
-    guard let password else { return try body(nil) }
+    guard let password else {
+        return try body(nil)
+    }
     guard !password.utf8.contains(0), (1 ... 128).contains(password.utf8.count) else {
         throw ZIPError.invalidArgument("Passwords must contain 1...128 UTF-8 bytes and no NUL")
     }
@@ -54,50 +73,78 @@ func checkCancellation(_ cancellation: ArchiveCancellation? = nil) throws {
 }
 
 struct EntryPaths {
-    private var files = Set<String>()
-    private var directories = Set<String>()
-    private var explicit = Set<String>()
-    private var spellings: [String: Data] = [:]
+    private struct Key: Hashable {
+        let parent: Int
+        let component: String
+    }
 
-    static func components(_ path: String, directory: Bool) throws -> [String] {
+    private struct Node {
+        let spelling: Data
+        var directory: Bool
+        var explicit: Bool
+    }
+
+    private var nodes: [Node] = []
+    private var children: [Key: Int] = [:]
+    let maximumDepth: Int
+    let maximumNodes: Int
+
+    init(maximumDepth: Int = 256, maximumNodes: Int = 100_000) {
+        self.maximumDepth = maximumDepth
+        self.maximumNodes = maximumNodes
+    }
+
+    static func components(_ path: String, directory: Bool, maximumDepth: Int = Int.max) throws -> [String] {
+        guard path.utf8.count <= Int(UInt16.max) else {
+            throw ZIPError.unsafePath(path)
+        }
         let name = directory && path.hasSuffix("/") ? String(path.dropLast()) : path
+        // Count before allocating component strings or doing Unicode folding.
+        let depth = name.utf8.reduce(1) { $1 == 47 ? $0 + 1 : $0 }
+        guard depth <= maximumDepth else {
+            throw ZIPError.limitExceeded("Path components")
+        }
         let parts = name.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
-        guard !name.isEmpty, !name.hasPrefix("/"), !name.contains("\\"), !name.contains(":"),
-              !name.utf8.contains(0), path.utf8.count <= Int(UInt16.max),
-              parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." && $0.utf8.count <= 255 })
-        else { throw ZIPError.unsafePath(path) }
+        guard
+            !name.isEmpty, !name.hasPrefix("/"), !name.contains("\\"), !name.contains(":"),
+            !name.utf8.contains(0),
+            parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." && $0.utf8.count <= 255 })
+        else {
+            throw ZIPError.unsafePath(path)
+        }
         return parts
     }
 
     mutating func insert(_ path: String, directory: Bool) throws {
-        let parts = try Self.components(path, directory: directory)
-        // Conservatively reject case and canonical Unicode aliases on every supported filesystem.
-        let canonical = parts.map {
-            $0.folding(options: .caseInsensitive, locale: Locale(identifier: "en_US_POSIX"))
-                .precomposedStringWithCanonicalMapping
-        }
-        for count in 1 ... canonical.count {
-            let key = canonical.prefix(count).joined(separator: "/")
-            let spelling = Data(parts.prefix(count).joined(separator: "/").utf8)
-            if let previous = spellings[key], previous != spelling {
-                throw ZIPError.conflictingPath(path)
+        let parts = try Self.components(path, directory: directory, maximumDepth: maximumDepth)
+        var parent = -1
+        for (offset, part) in parts.enumerated() {
+            let last = offset == parts.count - 1
+            let key = Key(parent: parent, component: part.folding(
+                options: .caseInsensitive,
+                locale: Locale(identifier: "en_US_POSIX"),
+            ).precomposedStringWithCanonicalMapping)
+            let spelling = Data(part.utf8)
+            if let id = children[key] {
+                guard
+                    nodes[id].spelling == spelling, nodes[id].directory,
+                    !last || (directory && !nodes[id].explicit)
+                else {
+                    throw ZIPError.conflictingPath(path)
+                }
+                if last {
+                    nodes[id].explicit = true
+                }
+                parent = id
+            } else {
+                guard nodes.count < maximumNodes else {
+                    throw ZIPError.limitExceeded("Path nodes")
+                }
+                let id = nodes.count
+                nodes.append(Node(spelling: spelling, directory: !last || directory, explicit: last))
+                children[key] = id
+                parent = id
             }
-            spellings[key] = spelling
-        }
-        let full = canonical.joined(separator: "/")
-        guard !explicit.contains(full), !files.contains(full), directory || !directories.contains(full) else {
-            throw ZIPError.conflictingPath(path)
-        }
-        for count in 1 ..< canonical.count {
-            let parent = canonical.prefix(count).joined(separator: "/")
-            guard !files.contains(parent) else { throw ZIPError.conflictingPath(path) }
-            directories.insert(parent)
-        }
-        explicit.insert(full)
-        if directory {
-            directories.insert(full)
-        } else {
-            files.insert(full)
         }
     }
 }

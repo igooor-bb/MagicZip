@@ -1,0 +1,30 @@
+--- a/mz_zip.c
++++ b/mz_zip.c
+@@ -2070,6 +2070,15 @@
+     return read;
+ }
+ 
++/* MagicZip: expose the running CRC without relying on read_close's compressed-size gate. */
++int32_t mz_zip_entry_get_computed_crc(void *handle, uint32_t *crc) {
++    mz_zip *zip = (mz_zip *)handle;
++    if (!zip || !crc || mz_zip_entry_is_open(zip) != MZ_OK || zip->entry_raw)
++        return MZ_PARAM_ERROR;
++    *crc = zip->entry_crc32;
++    return MZ_OK;
++}
++
+ int32_t mz_zip_entry_write(void *handle, const void *buf, int32_t len) {
+     mz_zip *zip = (mz_zip *)handle;
+     int32_t written = 0;
+--- a/mz_zip.h
++++ b/mz_zip.h
+@@ -125,6 +125,9 @@
+                                 const char *password);
+ /* Open for writing the current file in the zip file */
+ 
++int32_t mz_zip_entry_get_computed_crc(void *handle, uint32_t *crc);
++/* MagicZip: get the CRC computed over bytes already returned by entry_read. */
++
+ int32_t mz_zip_entry_write(void *handle, const void *buf, int32_t len);
+ /* Write bytes from the current file in the zip file */
+ 

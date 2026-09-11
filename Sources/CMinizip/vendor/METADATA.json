@@ -23,6 +23,10 @@
     {
       "file": "0002-propagate-finalization-errors.patch",
       "sha256": "84a50b470cd89bd149db49a7d1c15f3b3dc1553c3766221ac5b4898dd4fae0c8"
+    },
+    {
+      "file": "0003-expose-computed-crc.patch",
+      "sha256": "a374cb15128588b49ee9fb9b0f3e0da5ded0fedcea5a761c5c7f53cd6bc88a25"
     }
   ],
   "ref": "4.2.2",
