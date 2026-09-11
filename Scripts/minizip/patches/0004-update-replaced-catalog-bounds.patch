@@ -1,0 +1,24 @@
+--- a/mz_zip.c
++++ b/mz_zip.c
+@@ -1621,6 +1621,21 @@
+     mz_zip *zip = (mz_zip *)handle;
+     if (!zip || !cd_stream)
+         return MZ_PARAM_ERROR;
++    /* A replacement directory can be larger than the on-disk wrapper directory.
++       Keep random-access bounds consistent with the newly installed stream. */
++    int64_t position = mz_stream_tell(cd_stream);
++    if (position < 0)
++        return MZ_TELL_ERROR;
++    int32_t err = mz_stream_seek(cd_stream, 0, MZ_SEEK_END);
++    if (err != MZ_OK)
++        return err;
++    int64_t end = mz_stream_tell(cd_stream);
++    err = mz_stream_seek(cd_stream, position, MZ_SEEK_SET);
++    if (err != MZ_OK)
++        return err;
++    if (cd_start_pos < 0 || end < cd_start_pos)
++        return MZ_PARAM_ERROR;
++    zip->cd_size = end - cd_start_pos;
+     zip->cd_offset = 0;
+     zip->cd_stream = cd_stream;
+     zip->cd_start_pos = cd_start_pos;

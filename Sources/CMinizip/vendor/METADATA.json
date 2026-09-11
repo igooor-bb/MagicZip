@@ -27,6 +27,10 @@
     {
       "file": "0003-expose-computed-crc.patch",
       "sha256": "a374cb15128588b49ee9fb9b0f3e0da5ded0fedcea5a761c5c7f53cd6bc88a25"
+    },
+    {
+      "file": "0004-update-replaced-catalog-bounds.patch",
+      "sha256": "49dba9974055b293c00e9a74120372c3e47cdbfc5c806cde6c10c6a868cc68e5"
     }
   ],
   "ref": "4.2.2",

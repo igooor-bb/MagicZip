@@ -73,3 +73,5 @@ print("Generated", len(list(OUT.glob("*.zip"))), "independent fixtures")
 # Keep deterministic regression fixtures reproducible independently of random AES salts.
 import runpy
 runpy.run_path(str(Path(__file__).with_name("generate-regression-fixtures.py")))
+
+runpy.run_path(str(Path(__file__).with_name("generate-secure-fixtures.py")))

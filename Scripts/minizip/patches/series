@@ -2,3 +2,4 @@
 0001-apple-namespace.patch
 0002-propagate-finalization-errors.patch
 0003-expose-computed-crc.patch
+0004-update-replaced-catalog-bounds.patch

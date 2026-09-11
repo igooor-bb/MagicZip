@@ -12,6 +12,7 @@ final class ArchiveWriter {
     private var native: NativeArchive
     private let gate = NSLock()
     private let cancellation: ArchiveCancellation?
+    private let securePassword: String?
     private var failed = false
     private let outputIdentity: FileIdentity
     private let stagingIdentity: FileIdentity
@@ -24,6 +25,7 @@ final class ArchiveWriter {
         fileDescriptor: consuming FileDescriptor,
         transaction: OutputTransaction,
         cancellation: ArchiveCancellation?,
+        securePassword: String? = nil,
     ) throws {
         outputIdentity = try FileIdentity(fileDescriptor)
         stagingIdentity = try FileIdentity(transaction.directory)
@@ -36,8 +38,12 @@ final class ArchiveWriter {
             }
             previousIdentity = nil
         }
+        self.securePassword = securePassword
         self.cancellation = cancellation
         native = try NativeArchive(fileDescriptor: fileDescriptor, writing: true)
+        if securePassword != nil {
+            magiczip_mask_headers(native.pointer)
+        }
     }
 
     /// Creates, finalizes and atomically publishes a ZIP archive.
@@ -63,13 +69,19 @@ final class ArchiveWriter {
         at url: URL,
         overwrite: ZIPOverwrite,
         cancellation: ArchiveCancellation?,
+        securePassword: String? = nil,
         body: (ArchiveWriter) throws -> T,
     ) throws -> T {
         try checkCancellation(cancellation)
         let transaction = try OutputTransaction(destination: url)
         return try completing {
             let descriptor = try transaction.createFile("archive.zip")
-            let writer = try ArchiveWriter(fileDescriptor: descriptor, transaction: transaction, cancellation: cancellation)
+            let writer = try ArchiveWriter(
+                fileDescriptor: descriptor,
+                transaction: transaction,
+                cancellation: cancellation,
+                securePassword: securePassword,
+            )
             let result = try completing {
                 let result = try body(writer)
                 guard !writer.failed else {
@@ -230,7 +242,11 @@ final class ArchiveWriter {
             throw ZIPError.busy
         }
         defer { gate.unlock() }
-        try native.close()
+        try completing {
+            if let securePassword, !failed {
+                try native.writeCatalog(password: securePassword, cancellation: cancellation)
+            }
+        } cleanup: { try native.close() }
     }
 
     private func append(

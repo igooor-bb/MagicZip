@@ -2,6 +2,7 @@
 #include "include/CMinizip.h"
 #include "vendor/mz.h"
 #include "vendor/mz_strm.h"
+#include "vendor/mz_strm_mem.h"
 #include "vendor/mz_zip.h"
 #include <stdio.h>
 #include <unistd.h>
@@ -14,6 +15,8 @@ typedef struct {
 struct magiczip_archive {
     magiczip_file_stream file;
     void *zip;
+    void *catalog; /* Owned decrypted directory, installed only after authentication. */
+    int secure;
     int writing;
     int entry_open;
     int64_t read_size;
@@ -119,6 +122,7 @@ int32_t magiczip_close(magiczip_archive **pointer) {
         err = end;
     }
     mz_zip_delete(&archive->zip);
+    mz_stream_mem_delete(&archive->catalog);
     if (archive->writing) {
         if (fflush(archive->file.file) != 0 && err == MZ_OK) {
             err = MZ_WRITE_ERROR;
@@ -235,7 +239,7 @@ int32_t magiczip_write_open(magiczip_archive *a, const char *path, int directory
                             int16_t level, int64_t modified, const char *password) {
     mz_zip_file info = {0};
     info.filename = path;
-    info.flag = MZ_ZIP_FLAG_UTF8;
+    info.flag = MZ_ZIP_FLAG_UTF8 | (a->secure ? MZ_ZIP_FLAG_MASK_LOCAL_INFO : 0);
     info.compression_method = method;
     info.modified_date = modified;
     info.version_madeby = (MZ_HOST_SYSTEM_UNIX << 8) | 63;
@@ -258,7 +262,182 @@ int32_t magiczip_write(magiczip_archive *a, const void *buffer, int32_t count) {
     return mz_zip_entry_write(a->zip, buffer, count);
 }
 int32_t magiczip_write_close(magiczip_archive *a) {
+    if (!a->entry_open) {
+        return MZ_OK;
+    }
     int32_t err = mz_zip_entry_write_close(a->zip, 0, -1, -1);
     a->entry_open = 0;
+    return err;
+}
+
+/* minizip-ng CDCD extension: a single encrypted entry holds the real directory.
+ * Keep this in the checked adapter instead of importing the high-level rw layer,
+ * whose whole-directory copy has no application budget or cancellation checkpoints. */
+int32_t magiczip_catalog_info(magiczip_archive *a, uint64_t *entries) {
+    int32_t err = magiczip_first(a);
+    if (err == MZ_END_OF_LIST) {
+        return MZ_EXIST_ERROR;
+    }
+    if (err != MZ_OK) {
+        return err;
+    }
+    mz_zip_file *info = NULL;
+    err = mz_zip_entry_get_info(a->zip, &info);
+    if (err != MZ_OK) {
+        return err;
+    }
+    const uint8_t *extra = (const uint8_t *)info->extrafield;
+    int found = 0;
+    for (uint32_t offset = 0; offset < info->extrafield_size;) {
+        if (info->extrafield_size - offset < 4) {
+            return MZ_FORMAT_ERROR;
+        }
+        uint16_t type = extra[offset] | ((uint16_t)extra[offset + 1] << 8);
+        uint16_t size = extra[offset + 2] | ((uint16_t)extra[offset + 3] << 8);
+        offset += 4;
+        if (size > info->extrafield_size - offset) {
+            return MZ_FORMAT_ERROR;
+        }
+        if (type == MZ_ZIP_EXTENSION_CDCD) {
+            if (found || size != 8) {
+                return MZ_FORMAT_ERROR;
+            }
+            found = 1;
+            *entries = 0;
+            for (int i = 0; i < 8; i++) {
+                *entries |= (uint64_t)extra[offset + i] << (i * 8);
+            }
+        }
+        offset += size;
+    }
+    if (!found) {
+        return MZ_EXIST_ERROR;
+    }
+    uint64_t outer_count = 0;
+    err = magiczip_count(a, &outer_count);
+    if (err != MZ_OK) {
+        return err;
+    }
+    if (outer_count != 1 || info->filename_size != 8 || memcmp(info->filename, "__cdcd__", 8) != 0 ||
+        !(info->flag & MZ_ZIP_FLAG_ENCRYPTED) || info->aes_strength != MZ_AES_STRENGTH_256 ||
+        (info->aes_version != 1 && info->aes_version != 2) ||
+        (info->compression_method != MZ_COMPRESS_METHOD_STORE &&
+         info->compression_method != MZ_COMPRESS_METHOD_DEFLATE) ||
+        info->disk_number != 0 || mz_zip_entry_is_dir(a->zip) == MZ_OK) {
+        return MZ_SUPPORT_ERROR;
+    }
+    return MZ_OK;
+}
+
+void magiczip_mask_headers(magiczip_archive *a) {
+    a->secure = 1;
+}
+
+int32_t magiczip_catalog_write_begin(magiczip_archive *a, const char *password, int32_t *length) {
+    void *cd = NULL;
+    uint64_t count = 0;
+    int32_t err = mz_zip_get_number_entry(a->zip, &count);
+    if (err == MZ_OK) {
+        err = mz_zip_get_cd_mem_stream(a->zip, &cd);
+    }
+    if (err != MZ_OK) {
+        return err;
+    }
+    mz_stream_mem_get_buffer_length(cd, length);
+    if (*length < 0 || *length > 64 * 1024 * 1024) {
+        return MZ_BUF_ERROR;
+    }
+    uint8_t extra[12] = {0xcd, 0xcd, 8, 0};
+    for (int i = 0; i < 8; i++) {
+        extra[4 + i] = (uint8_t)(count >> (i * 8));
+    }
+    mz_zip_file info = {0};
+    info.filename = "__cdcd__";
+    info.flag = MZ_ZIP_FLAG_UTF8;
+    info.version_madeby = (MZ_HOST_SYSTEM_UNIX << 8) | 63;
+    info.compression_method = MZ_COMPRESS_METHOD_STORE;
+    info.uncompressed_size = *length;
+    info.aes_version = 2;
+    info.aes_strength = MZ_AES_STRENGTH_256;
+    info.extrafield = extra;
+    info.extrafield_size = sizeof(extra);
+    err = mz_zip_entry_write_open(a->zip, &info, 0, 0, password);
+    if (err == MZ_OK) {
+        a->entry_open = 1;
+    }
+    return err;
+}
+
+int32_t magiczip_catalog_write_chunk(magiczip_archive *a, int32_t offset, int32_t count) {
+    void *cd = NULL;
+    const void *bytes = NULL;
+    int32_t length = 0;
+    int32_t err = mz_zip_get_cd_mem_stream(a->zip, &cd);
+    if (err != MZ_OK) {
+        return err;
+    }
+    mz_stream_mem_get_buffer_length(cd, &length);
+    if (offset < 0 || count < 0 || offset > length || count > length - offset) {
+        return MZ_PARAM_ERROR;
+    }
+    err = mz_stream_mem_get_buffer_at(cd, offset, &bytes);
+    if (err != MZ_OK) {
+        return err;
+    }
+    int32_t written = magiczip_write(a, bytes, count);
+    return written == count ? MZ_OK : (written < 0 ? written : MZ_WRITE_ERROR);
+}
+
+int32_t magiczip_catalog_write_end(magiczip_archive *a) {
+    void *cd = NULL;
+    int32_t err = mz_zip_get_cd_mem_stream(a->zip, &cd);
+    if (err == MZ_OK) {
+        err = mz_stream_seek(cd, 0, MZ_SEEK_SET);
+    }
+    if (err != MZ_OK) {
+        return err;
+    }
+    /* Discard plaintext directory before closing the outer catalog entry. */
+    mz_stream_mem_set_buffer_limit(cd, 0);
+    err = magiczip_write_close(a);
+    if (err == MZ_OK) {
+        err = mz_zip_set_number_entry(a->zip, 1);
+    }
+    return err;
+}
+
+int32_t magiczip_catalog_append(magiczip_archive *a, const void *bytes, int32_t count) {
+    if (!a->catalog) {
+        a->catalog = mz_stream_mem_create();
+        if (!a->catalog) {
+            return MZ_MEM_ERROR;
+        }
+        int32_t err = mz_stream_open(a->catalog, NULL, MZ_OPEN_MODE_CREATE);
+        if (err != MZ_OK) {
+            return err;
+        }
+    }
+    int64_t size = mz_stream_tell(a->catalog);
+    if (size < 0 || count < 0 || count > 64 * 1024 * 1024 - size) {
+        return MZ_BUF_ERROR;
+    }
+    if (count == 0) {
+        return MZ_OK;
+    }
+    int32_t written = mz_stream_write(a->catalog, bytes, count);
+    return written == count ? MZ_OK : (written < 0 ? written : MZ_WRITE_ERROR);
+}
+
+int32_t magiczip_catalog_install(magiczip_archive *a, uint64_t entries) {
+    if (a->entry_open) {
+        return MZ_PARAM_ERROR;
+    }
+    int32_t err = magiczip_catalog_append(a, NULL, 0);
+    if (err == MZ_OK) {
+        err = mz_zip_set_cd_stream(a->zip, 0, a->catalog);
+    }
+    if (err == MZ_OK) {
+        err = mz_zip_set_number_entry(a->zip, entries);
+    }
     return err;
 }

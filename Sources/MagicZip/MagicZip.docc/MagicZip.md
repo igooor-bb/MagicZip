@@ -44,6 +44,14 @@ separators. Neither extraction nor archive creation follows symlinks.
 ### Writing
 
 - ``ZIPWriter``
+- ``MixedZIPWriter``
+
+### Encrypted catalogs (limited compatibility)
+
+- ``SecureZIPWriter``
+- ``SecureZIPReader``
+
+### Options
 - ``ZIPCompression``
 - ``ZIPEncryption``
 - ``ZIPOverwrite``

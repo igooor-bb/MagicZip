@@ -216,3 +216,25 @@ not device runtime or cold-storage performance claims.
 Checks used the user's working-tree `.swiftformat` configuration, deliberately excluded from
 the commits. Its final settings must accompany these formatting changes when reproducing
 `format-check` elsewhere. `Validation/IMPROVEMENT_SPEC.md` is also left untouched and untracked.
+
+## Password API and Secure catalog validation
+
+The password API tests exercise the common-password writer across Data, file, tree
+and producer additions, and mixed extraction with per-entry resolution, selection,
+reentrancy rejection, missing passwords and throwing providers. Failed extraction
+preserves the existing destination.
+
+Secure tests cover Store/Deflate, encrypted empty files and empty archives, masked
+UTF-8 names, multiple-entry random access, scoped/async lifetime, cancellation and
+poisoned writers. `Scripts/generate-secure-fixtures.py` independently builds CDCD
+archives with pyzipper and explicit ZIP records (no MagicZip or minizip code).
+Its fixtures exercise AES catalog authentication, oversized metadata, inconsistent
+entry count, traversal paths and corrupted file authentication with atomic rollback.
+All fixture hashes are recorded in `Fixtures/SHA256.json` under the test target.
+
+For these API changes, `mise run check`, `mise run validate-apple`,
+`mise run validate-pods` and `mise run validate-compatibility` all exited zero.
+The compatibility client required `swift package --package-path Validation/Compatibility clean`
+to refresh SwiftPM's cached source list after adding Swift files. All 245 defined C
+globals remain namespaced. Reimporting minizip-ng 4.2.2 twice produced identical hashes
+for every vendor file. Secure compatibility with Finder is not claimed or tested.

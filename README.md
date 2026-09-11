@@ -243,3 +243,41 @@ The single-password extraction overload delegates to this same implementation.
 Migration: move `password:` from ordinary writer additions to `withArchive` (or
 `withArchiveAsync`), or explicitly choose `MixedZIPWriter` and specify passwords
 on every addition. Scoped lifetimes and atomic publication are unchanged.
+
+### Encrypted catalogs (limited compatibility)
+
+`SecureZIPWriter` / `SecureZIPReader` implement minizip-ng's **CDCD extension**,
+not PKWARE central-directory encryption. Use them only with a compatible reader;
+compatibility with Finder or ordinary ZIP tools is not promised. This is a separate,
+explicit API, not an automatic mode switch in `ZIPWriter`.
+
+```swift
+try SecureZIPWriter.withArchive(at: archiveURL, password: "secret") { writer in
+    try writer.add(data: contents, path: "private/report.txt")
+}
+try SecureZIPReader.withArchive(at: archiveURL, password: "secret") { reader in
+    print(reader.entries.map(\.path))
+    try reader.extract(to: outputURL)
+}
+```
+
+Both types also provide `withArchiveAsync`. One mandatory password protects all
+regular files and the catalog. There are no per-entry password parameters. Readers
+authenticate the entire catalog **before invoking the scope body**. File payloads
+are still authenticated only when read. Ordinary `ZIPReader` rejects the CDCD wrapper
+with an error directing callers to `SecureZIPReader`; Secure readers reject ordinary
+archives and catalogs containing unencrypted regular files. An ordinary file merely
+named `__cdcd__` remains valid in the normal API.
+
+The real directory is stored in one AES-256 `__cdcd__` entry. Local filenames are
+replaced with opaque names and local timestamps are masked. This hides original names,
+paths and timestamps, but does **not** conceal the archive's existence, entry count,
+file/directory boundaries, compression methods or approximate sizes. Empty directories
+have no encrypted payload; their original names live in the encrypted catalog.
+The password does not establish an author's identity.
+
+The decrypted catalog has a fixed 64 MiB allocation budget on both write and read,
+in addition to ordinary `ZIPLimits`. Catalog processing checks cancellation every
+64 KiB and verifies size and AES HMAC before exposing metadata. Decrypted metadata
+then passes the same path, conflict, special-file and resource validation as ordinary
+ZIPs. Atomic publication and cleanup guarantees apply to Secure archives too.

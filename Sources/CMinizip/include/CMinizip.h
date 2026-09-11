@@ -39,6 +39,14 @@ int32_t magiczip_write_open(magiczip_archive *archive, const char *path, int dir
                             int16_t level, int64_t modified, const char *password);
 int32_t magiczip_write(magiczip_archive *archive, const void *buffer, int32_t count);
 int32_t magiczip_write_close(magiczip_archive *archive);
+/* Private CDCD extension operations. Password memory remains borrowed until entry close. */
+int32_t magiczip_catalog_info(magiczip_archive *archive, uint64_t *entries);
+void magiczip_mask_headers(magiczip_archive *archive);
+int32_t magiczip_catalog_write_begin(magiczip_archive *archive, const char *password, int32_t *length);
+int32_t magiczip_catalog_write_chunk(magiczip_archive *archive, int32_t offset, int32_t count);
+int32_t magiczip_catalog_write_end(magiczip_archive *archive);
+int32_t magiczip_catalog_append(magiczip_archive *archive, const void *bytes, int32_t count);
+int32_t magiczip_catalog_install(magiczip_archive *archive, uint64_t entries);
 #ifdef __cplusplus
 }
 #endif

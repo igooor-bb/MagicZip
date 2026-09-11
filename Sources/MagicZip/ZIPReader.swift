@@ -24,6 +24,7 @@ public final class ZIPReader {
         at url: URL,
         limits: ZIPLimits,
         cancellation: ArchiveCancellation?,
+        securePassword: String? = nil,
         afterOpen: (() throws -> Void)? = nil,
         afterClose: (() throws -> Void)? = nil,
     ) throws {
@@ -34,7 +35,11 @@ public final class ZIPReader {
         let entries: [ZIPEntry]
         do {
             try afterOpen?()
+            try native.prepareCatalog(password: securePassword, limits: limits, cancellation: cancellation)
             entries = try Self.scan(native.pointer, limits: limits, cancellation: cancellation)
+            if securePassword != nil, entries.contains(where: { !$0.isDirectory && $0.encryption != .aes256 }) {
+                throw ZIPError.unsupported(path: nil, feature: "Secure ZIP requires AES-256 files")
+            }
         } catch {
             let primary = error
             do {
@@ -69,10 +74,11 @@ public final class ZIPReader {
         at url: URL,
         limits: ZIPLimits,
         cancellation: ArchiveCancellation?,
+        securePassword: String? = nil,
         body: (ZIPReader) throws -> T,
     ) throws -> T {
         try checkCancellation(cancellation)
-        let reader = try ZIPReader(at: url, limits: limits, cancellation: cancellation)
+        let reader = try ZIPReader(at: url, limits: limits, cancellation: cancellation, securePassword: securePassword)
         return try completing {
             try body(reader)
         } cleanup: {

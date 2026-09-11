@@ -38,3 +38,10 @@ symbols: Clang module names alone cannot prevent link collisions with other ZIP 
 private adapter. It does not replace the adapter's checksum comparison, size validation or
 HMAC checks with upstream's conditional close verification. Namespace generation follows
 patch application so newly introduced identifiers receive the same `magiczip_` prefix.
+
+`0004-update-replaced-catalog-bounds.patch` updates `cd_size` when installing a
+replacement central-directory stream. Upstream retained the small outer directory's
+size after CDCD decryption, so random access into later inner records failed. The
+adapter implements CDCD framing using the existing low-level API, with checked
+closure/HMAC, a 64 MiB catalog budget and Swift cancellation checkpoints; the upstream
+high-level `mz_zip_rw` layer is intentionally not imported.

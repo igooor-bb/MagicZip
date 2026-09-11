@@ -91,3 +91,18 @@ there is no wildcard exclusion based on the staging-name prefix.
 Subtree selection preserves exact entry spelling. An explicit directory may be named `assets`
 or `assets/`; either selection argument includes the directory and descendants with a component
 boundary. An ordinary file named `assets` is not a subtree. Lookup remains case-sensitive.
+
+## Password and catalog modes
+
+``ZIPWriter`` applies its scope password to every regular file. ``MixedZIPWriter``
+requires an explicit password (or nil) for each addition. ``ZIPReader`` supports a
+common password or a synchronous throwing password provider for selected encrypted
+entries. Neither mode hides names or metadata.
+
+``SecureZIPWriter`` and ``SecureZIPReader`` use minizip-ng's CDCD extension and require
+a compatible reader. A mandatory scope password protects the catalog and regular
+files. The Secure reader authenticates the catalog before calling user code; payloads
+are verified on read. Catalog allocation is capped at 64 MiB separately from ZIPLimits.
+Original names and timestamps are hidden; entry count, boundaries, compression methods
+and approximate sizes remain observable. This is not PKWARE encrypted-directory support
+and does not guarantee compatibility with Finder.
