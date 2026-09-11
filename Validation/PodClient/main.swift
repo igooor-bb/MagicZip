@@ -22,7 +22,9 @@ private enum PodClientValidation {
     static func verifyMagicZip(_ archive: URL) async throws {
         try await ZIPReader.withArchiveAsync(at: archive) { reader in
             let actual = try reader.data(path: "hello", password: password)
-            guard actual == payload else { throw ValidationFailure.payloadMismatch }
+            guard actual == payload else {
+                throw ValidationFailure.payloadMismatch
+            }
         }
     }
 
@@ -30,11 +32,15 @@ private enum PodClientValidation {
         let output = root.appendingPathComponent("unzip")
         try SSZipArchive.unzipFile(atPath: archive.path, toDestination: output.path, overwrite: true, password: password)
         let actual = try Data(contentsOf: output.appendingPathComponent("hello"))
-        guard actual == payload else { throw ValidationFailure.payloadMismatch }
+        guard actual == payload else {
+            throw ValidationFailure.payloadMismatch
+        }
     }
 
     static func makeTemporaryDirectory() throws -> URL {
-        guard let path = realpath(FileManager.default.temporaryDirectory.path, nil) else { throw ValidationFailure.temporaryDirectory }
+        guard let path = realpath(FileManager.default.temporaryDirectory.path, nil) else {
+            throw ValidationFailure.temporaryDirectory
+        }
         defer { free(path) }
         let root = URL(fileURLWithPath: String(cString: path)).appendingPathComponent("MagicZipPod-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

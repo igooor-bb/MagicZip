@@ -33,3 +33,8 @@ After an upstream upgrade, review the allowlist, configuration and patches, run
 `mise run check`, `Scripts/validate-apple.sh` and the interoperability/large-archive
 checks described in the repository documentation. In particular, audit global C
 symbols: Clang module names alone cannot prevent link collisions with other ZIP implementations.
+
+`0003-expose-computed-crc.patch` exposes the running, actually computed entry CRC to the
+private adapter. It does not replace the adapter's checksum comparison, size validation or
+HMAC checks with upstream's conditional close verification. Namespace generation follows
+patch application so newly introduced identifiers receive the same `magiczip_` prefix.

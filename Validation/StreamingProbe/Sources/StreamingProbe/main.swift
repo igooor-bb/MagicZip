@@ -18,7 +18,9 @@ private enum StreamingValidation {
         try corruptLargeEntry(in: archive)
         try verifySelectiveExtraction(archive: archive, root: root)
         let peak = try peakResidentMiB()
-        guard peak < maximumResidentMiB else { throw ValidationFailure.memoryBudgetExceeded(peak) }
+        guard peak < maximumResidentMiB else {
+            throw ValidationFailure.memoryBudgetExceeded(peak)
+        }
         print("PASS: streamed \(payloadBytes) bytes; peak RSS \(String(format: "%.1f", peak)) MiB; corrupt unselected payload untouched")
     }
 
@@ -27,7 +29,9 @@ private enum StreamingValidation {
         try ZIPWriter.withArchive(at: archive) { writer in
             var remaining = payloadBytes
             try writer.addStream(path: "large.bin", compression: checksZIP64 ? .deflate() : .store) { _ in
-                guard remaining > 0 else { return nil }
+                guard remaining > 0 else {
+                    return nil
+                }
                 remaining -= Int64(chunk.count)
                 return chunk
             }
@@ -40,7 +44,9 @@ private enum StreamingValidation {
         try ZIPReader.withArchive(at: archive, limits: limits) { reader in
             try reader.read(path: "large.bin") { bytesRead += Int64($0.count) }
         }
-        guard bytesRead == payloadBytes else { throw ValidationFailure.payloadMismatch }
+        guard bytesRead == payloadBytes else {
+            throw ValidationFailure.payloadMismatch
+        }
     }
 
     static func corruptLargeEntry(in archive: URL) throws {
@@ -64,17 +70,23 @@ private enum StreamingValidation {
         }
         let contents = try FileManager.default.contentsOfDirectory(atPath: output.path)
         let data = try Data(contentsOf: output.appendingPathComponent("wanted.txt"))
-        guard contents == ["wanted.txt"], data == Data("selected".utf8) else { throw ValidationFailure.payloadMismatch }
+        guard contents == ["wanted.txt"], data == Data("selected".utf8) else {
+            throw ValidationFailure.payloadMismatch
+        }
     }
 
     static func peakResidentMiB() throws -> Double {
         var usage = rusage()
-        guard getrusage(RUSAGE_SELF, &usage) == 0 else { throw ValidationFailure.resourceUsage }
+        guard getrusage(RUSAGE_SELF, &usage) == 0 else {
+            throw ValidationFailure.resourceUsage
+        }
         return Double(usage.ru_maxrss) / 1024 / 1024
     }
 
     static func makeTemporaryDirectory() throws -> URL {
-        guard let path = realpath(FileManager.default.temporaryDirectory.path, nil) else { throw ValidationFailure.temporaryDirectory }
+        guard let path = realpath(FileManager.default.temporaryDirectory.path, nil) else {
+            throw ValidationFailure.temporaryDirectory
+        }
         defer { free(path) }
         let root = URL(fileURLWithPath: String(cString: path)).appendingPathComponent("MagicZipMemory-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -89,4 +101,8 @@ private enum StreamingValidation {
     }
 }
 
-try StreamingValidation.run()
+if CommandLine.arguments.contains("--benchmark") {
+    try PerformanceProbe.run(Array(CommandLine.arguments.dropFirst()))
+} else {
+    try StreamingValidation.run()
+}

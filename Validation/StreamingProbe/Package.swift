@@ -2,6 +2,8 @@
 import PackageDescription
 
 let package = Package(
-    name: "StreamingProbe", platforms: [.macOS(.v13)], dependencies: [.package(path: "../..")],
+    name: "StreamingProbe",
+    platforms: [.macOS(.v13)],
+    dependencies: [.package(path: "../..")],
     targets: [.executableTarget(name: "StreamingProbe", dependencies: [.product(name: "MagicZip", package: "MagicZip")])],
 )

@@ -53,3 +53,7 @@ run = "./Scripts/validate-compatibility.sh"
 [tasks."validate-memory"]
 description = "Measure peak RSS and selective extraction on a 512 MiB archive"
 run = "swift run -c release --package-path Validation/StreamingProbe"
+
+[tasks."validate-trees"]
+description = "Isolated deep/wide traversal and self-input regressions with 128 FDs"
+run = "./Scripts/validate-trees.sh"

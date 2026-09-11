@@ -22,3 +22,5 @@ disabled_rules:
   - trailing_comma
   - cyclomatic_complexity
   - large_tuple
+opt_in_rules:
+  - multiline_arguments_brackets

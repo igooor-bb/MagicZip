@@ -182,3 +182,28 @@ prevent collisions; private validation links an independent ZIP implementation i
 
 MagicZip-owned code is MIT licensed; see [LICENSE](LICENSE). Vendored minizip-ng retains its
 zlib license and original source notices. See [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).
+
+### Path and source budgets
+
+Reader defaults include `maximumPathDepth: 256` and `maximumPathNodes: 100_000` in `ZIPLimits`.
+Depth includes the final name; implicit directories consume nodes. Writers use the same finite
+budgets, 100,000 entries and 16 MiB of names. The registry stores parent IDs and individual
+components: expected linear work in name bytes and linear storage, without recursive teardown.
+
+Directory creation and cleanup are iterative, with descriptor usage independent of depth.
+Source names are sorted once per directory and globally bounded; cleanup removes batches of
+256 names per level and has no archive depth limit. Reopening components from the pinned root
+costs O(sum of visited depths) filesystem operations while preserving symlink protection.
+Source cancellation is checked during traversal; cleanup still attempts to finish.
+
+Archive creation rejects sources overlapping its staging directory, open output or previous
+destination by device/inode, including aliases. A destination inside the source tree fails
+without replacing the old result. Ordinary `.magiczip-user` directories remain valid sources.
+Directory subtree selection accepts explicit names with or without a trailing slash and keeps
+UTF-8 spelling exact. Scan and close failures are combined rather than losing the close error.
+
+File input uses one noncopyable 64 KiB buffer; reading reuses a Swift-managed byte array.
+Both borrow bytes across internal file/C boundaries; public callbacks still receive independent
+owned `Data`. CRC, AES
+HMAC and size checks remain enabled. See [validation](Validation/README.md) for reproducible
+performance measurements and the separate resource-limited tree checks.

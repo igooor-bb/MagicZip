@@ -111,3 +111,35 @@ fails and cleanup fails too, ``ZIPError/combined(primary:cleanup:)`` preserves b
 
 A failed read closes the current entry, allowing another independent entry to be read.
 The caller must discard any provisional chunks received from the failed operation.
+
+## Internal borrowed buffers and directory ownership
+
+File creation and extraction share the same entry loops as public streaming callbacks.
+File input uses a noncopyable `StreamBuffer` owning one uninitialized 64 KiB allocation.
+Reading reuses one Swift-managed byte array per entry (64 KiB by default); the array already
+owns its storage and needs no manual resource owner. Synchronous borrowing scopes pass only
+initialized bytes to C or the filesystem. File input does not
+allocate and zero an array or construct owned `Data` per chunk. Extraction does not copy
+C output into `Data`. Public reading still copies each delivered chunk into independent owned
+`Data`, including when a client keeps earlier chunks. Buffer size and cancellation/integrity
+checkpoints are unchanged.
+
+A noncopyable directory-stream owner consumes a descriptor only when `fdopendir` succeeds;
+failed construction checks descriptor closure. Its consuming checked scope lends the stream
+and closes it exactly once, combining enumeration and close errors. Traversal frames never
+own this stream. The transaction retains its two noncopyable directory descriptors to anchor
+its lifetime; the C adapter owns the `FILE*` and backend handles after consuming the input FD.
+Entry open/close operations remain scoped state transitions of the exclusive native archive
+owner, rather than independently owning the same handle twice.
+
+Reader initialization explicitly closes the native archive if metadata scanning fails,
+including cancellation. A simultaneous close failure becomes a combined error with the scan
+failure first. Instance-local internal hooks exercise this path without public injection API
+or process-wide descriptor substitution.
+
+The adapter compares the upstream running CRC against the central-directory CRC for plaintext
+and AE-1, through a private patched accessor. This avoids a second CRC update without relying
+on upstream `read_close`'s compressed-size condition, which is insufficient for AES overhead.
+AE-2 continues to use HMAC; compressed/uncompressed sizes and AES authentication are checked
+independently. Store's raw codec is rebound to the still-open file after AES authentication,
+so checked closure does not fail merely because authentication closed its AES base stream.
