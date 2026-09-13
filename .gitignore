@@ -11,3 +11,5 @@ Validation/PodClient/Client.xcodeproj/
 .venv/
 .bundle/
 __pycache__/
+Benchmarks/.benchmarkBaselines/
+Benchmarks/results/

@@ -149,9 +149,11 @@ mise run test         # Swift Testing
 mise run check        # format-check, lint, test
 mise run validate-apple
 mise run validate-pods
+mise run benchmark -- list  # independent Release benchmark package
 ```
 
 SwiftFormat 0.62.1, SwiftLint 0.65.1, clang-format 22.1.8, Python 3.14.7, uv 0.12.11 and Ruby 3.4.10 are pinned.
+See [Benchmarks](Benchmarks/README.md) for runtime/allocation metrics, archive sizes and local baseline comparisons.
 `uv.lock` fixes Python fixture dependencies; `Gemfile.lock` fixes CocoaPods/xcodeproj and transitive gems.
 Use `uv run --locked --group fixtures` and `bundle exec` through the mise tasks. Vendored code is excluded
 from formatting/linting. Apple validation builds macOS, iOS device and Simulator plus DocC.

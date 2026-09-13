@@ -5,6 +5,7 @@ swiftlint = "0.65.1"
 python = "3.14.7"
 uv = "0.12.11"
 ruby = "3.4.10"
+"conda:jemalloc" = "5.3.0"
 
 [env]
 BUNDLE_PATH = "{{config_root}}/.bundle/gems"
@@ -25,6 +26,10 @@ run = "swiftlint --strict"
 [tasks.test]
 description = "Run Swift Testing suite"
 run = "swift test"
+
+[tasks.benchmark]
+description = "Run Release benchmarks or manage local baselines (arguments forwarded to Benchmark)"
+run = "bash Scripts/benchmark.sh"
 
 [tasks.check]
 description = "Run the same checks locally and in CI"

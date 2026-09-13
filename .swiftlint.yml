@@ -1,6 +1,7 @@
 included:
   - Sources/MagicZip
   - Tests
+  - Benchmarks/Benchmarks
   - Validation/Compatibility/Sources
   - Validation/StreamingProbe/Sources
   - Validation/PodClient/main.swift

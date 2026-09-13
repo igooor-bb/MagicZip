@@ -10,4 +10,5 @@ elif [[ $# -gt 0 ]]; then
     exit 2
 fi
 clang-format "${options[@]}" Sources/CMinizip/MagicZipAdapter.c Sources/CMinizip/include/CMinizip.h \
-    Tests/CMinizipTestSupport/FinalizationProbe.c Tests/CMinizipTestSupport/include/FinalizationProbe.h
+    Tests/CMinizipTestSupport/FinalizationProbe.c Tests/CMinizipTestSupport/include/FinalizationProbe.h \
+    Benchmarks/Support/jemalloc/jemalloc.h
