@@ -80,6 +80,7 @@ Use a parent directory that already exists. File URLs must contain no symlink co
 
 - ``ZIPError``
 - ``ZIPBackendOperation``
+- ``ZIPFileSystemOperation``
 - ``ZIPBackendStatus``
 - <doc:StreamingAndOwnership>
 - <doc:SafetyAndLimits>

@@ -26,7 +26,7 @@ public indirect enum ZIPError: Error {
     ///   - operation: The operation that failed.
     ///   - path: The affected filesystem path.
     ///   - code: The underlying POSIX error code.
-    case fileSystem(operation: String, path: String, code: Int32)
+    case fileSystem(operation: ZIPFileSystemOperation, path: String, code: Int32)
 
     /// The archive session has closed or was invalidated by an earlier failure.
     case closed
@@ -256,7 +256,7 @@ public struct ZIPLimits: Sendable {
         self.maximumCompressionRatio = maximumCompressionRatio
     }
 
-    func validate() throws {
+    func validate() throws(ZIPError) {
         guard
             maximumPathDepth >= 0, maximumPathNodes >= 0, maximumEntries >= 0, maximumPathBytes >= 0, maximumEntryBytes >= 0,
             maximumTotalBytes >= 0, maximumCompressionRatio.isFinite, maximumCompressionRatio > 0

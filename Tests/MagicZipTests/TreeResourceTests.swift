@@ -11,7 +11,11 @@ struct TreeResourceTests {
         var descriptors = rlimit(rlim_cur: 128, rlim_max: 128)
         var fileSize = rlimit(rlim_cur: 128 * 1024 * 1024, rlim_max: 128 * 1024 * 1024)
         guard setrlimit(RLIMIT_NOFILE, &descriptors) == 0, setrlimit(RLIMIT_FSIZE, &fileSize) == 0 else {
-            throw ZIPError.fileSystem(operation: "set probe limits", path: "", code: errno)
+            throw NSError(
+                domain: NSPOSIXErrorDomain,
+                code: Int(errno),
+                userInfo: [NSLocalizedDescriptionKey: "Failed to set test resource limits"],
+            )
         }
     }
 
@@ -45,13 +49,13 @@ struct TreeResourceTests {
             let old = root.appendingPathComponent("old")
             try FileManager.default.createDirectory(at: old, withIntermediateDirectories: false)
             let oldRoot = try FileSystem.openDirectory(old)
-            try oldRoot.withCheckedClose(operation: "close old", path: "old") { descriptor in
+            try oldRoot.withCheckedClose(operation: .closeSourceDirectory, path: "old") { descriptor in
                 let deep = try FileSystem.directory(at: descriptor, components: Array(repeating: "x", count: 300)[...])
-                try deep.close(operation: "close old leaf", path: "leaf")
+                try deep.close(operation: .closeSourceDirectory, path: "leaf")
             }
             try ZIPReader.withArchive(at: archive) { try $0.extract(to: old, overwrite: .replace) }
             let parent = try FileSystem.openDirectory(root)
-            try parent.withCheckedClose(operation: "close root", path: "root") {
+            try parent.withCheckedClose(operation: .closeSourceRoot, path: "root") {
                 try FileSystem.remove(parent: $0, name: "source")
                 try FileSystem.remove(parent: $0, name: "old")
             }
@@ -129,7 +133,7 @@ struct TreeResourceTests {
             }
             if writing {
                 let parent = try FileSystem.openDirectory(root)
-                try parent.withCheckedClose(operation: "close root", path: "root") {
+                try parent.withCheckedClose(operation: .closeSourceRoot, path: "root") {
                     try FileSystem.remove(parent: $0, name: "source")
                 }
             }
@@ -140,17 +144,17 @@ struct TreeResourceTests {
     @Test func `wide cleanup processes bounded batches`() throws {
         try temporaryDirectory { root in
             let parent = try FileSystem.openDirectory(root)
-            try parent.withCheckedClose(operation: "close root", path: "root") { parent in
+            try parent.withCheckedClose(operation: .closeSourceRoot, path: "root") { parent in
                 #expect(mkdirat(parent.raw, "wide", 0o700) == 0)
                 let wide = try FileSystem.reopen(parent, components: ["wide"])
-                try wide.withCheckedClose(operation: "close wide", path: "wide") { wide in
+                try wide.withCheckedClose(operation: .closeSourceDirectory, path: "wide") { wide in
                     for index in 0 ..< 2000 {
                         let file = try FileDescriptor(
                             openat(wide.raw, "f\(index)", O_CREAT | O_WRONLY, 0o600),
-                            operation: "create",
+                            operation: .createOutput,
                             path: "wide",
                         )
-                        try file.close(operation: "close", path: "wide")
+                        try file.close(operation: .closeOutput, path: "wide")
                     }
                 }
                 try FileSystem.remove(parent: parent, name: "wide")

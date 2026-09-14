@@ -83,8 +83,10 @@ enum ArchiveBenchmarks {
             let payloadBytes: Int = switch selection {
             case .all:
                 fixture.inputBytes
+
             case .paths:
                 1024
+
             case .subtree:
                 100 * 1024
             }
@@ -97,8 +99,10 @@ enum ArchiveBenchmarks {
                 switch selection {
                 case .all:
                     true
+
                 case let .paths(paths):
                     paths.contains(path)
+
                 case let .subtree(prefix):
                     path.hasPrefix(prefix + "/")
                 }

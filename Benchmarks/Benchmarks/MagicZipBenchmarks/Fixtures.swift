@@ -18,6 +18,7 @@ enum ArchiveVariant: String, CaseIterable {
         switch self {
         case .store, .storeAES:
             .store
+
         case .deflate, .deflateAES:
             .deflate(level: .balanced)
         }
@@ -27,6 +28,7 @@ enum ArchiveVariant: String, CaseIterable {
         switch self {
         case .store, .deflate:
             nil
+
         case .storeAES, .deflateAES:
             "magiczip-benchmark-password"
         }

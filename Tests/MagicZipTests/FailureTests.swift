@@ -5,6 +5,23 @@ import Testing
 @testable import MagicZip
 
 struct FailureTests {
+    @Test func `filesystem failures preserve operation path and POSIX code`() throws {
+        try temporaryDirectory { root in
+            let missing = root.appendingPathComponent("missing.zip")
+            do {
+                try ZIPReader.withArchive(at: missing) { _ in
+                    Issue.record("Missing archive was opened")
+                }
+            } catch let ZIPError.fileSystem(operation, path, code) {
+                #expect(operation == .openFile)
+                #expect(path == missing.path)
+                #expect(code == ENOENT)
+                let error = ZIPError.fileSystem(operation: operation, path: path, code: code)
+                #expect(error.localizedDescription.hasPrefix("Failed to open file [\(missing.path)]:"))
+            }
+        }
+    }
+
     @Test func `unicode case aliases are rejected`() throws {
         var paths = EntryPaths()
         try paths.insert("Σ/one", directory: false)
@@ -20,9 +37,9 @@ struct FailureTests {
     func `descriptor scope reports close failure and preserves body error`(bodyFails: Bool) throws {
         // Outside the process descriptor range: close deterministically fails without racing
         // another test that might reuse a recently closed descriptor number.
-        let descriptor = try FileDescriptor(Int32.max, operation: "test ownership", path: "fixture")
+        let descriptor = try FileDescriptor(Int32.max, operation: .openFile, path: "fixture")
         do {
-            try descriptor.withCheckedClose(operation: "close fixture", path: "fixture") { _ in
+            try descriptor.withCheckedClose(operation: .closeOutput, path: "fixture") { _ in
                 if bodyFails {
                     throw CancellationError()
                 }
@@ -35,10 +52,10 @@ struct FailureTests {
                 Issue.record("Expected filesystem cleanup error")
                 return
             }
-            #expect(operation == "close fixture" && path == "fixture" && code == EBADF)
+            #expect(operation == .closeOutput && path == "fixture" && code == EBADF)
         } catch let ZIPError.fileSystem(operation, path, code) {
             #expect(!bodyFails)
-            #expect(operation == "close fixture" && path == "fixture" && code == EBADF)
+            #expect(operation == .closeOutput && path == "fixture" && code == EBADF)
         }
     }
 
@@ -47,7 +64,7 @@ struct FailureTests {
             let url = root.appendingPathComponent("fault.zip")
             let fd = open(url.path, O_CREAT | O_RDWR | O_EXCL, 0o600)
             #expect(fd >= 0)
-            let descriptor = try FileDescriptor(fd, operation: "open fault file", path: url.path)
+            let descriptor = try FileDescriptor(fd, operation: .openFile, path: url.path)
             var native = try NativeArchive(fileDescriptor: descriptor, writing: true)
             let readOnly = open(url.path, O_RDONLY)
             #expect(readOnly >= 0)

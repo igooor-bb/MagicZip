@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 public extension ZIPReader {
 
@@ -36,20 +37,15 @@ public extension ZIPReader {
 }
 
 /// Only this locked flag crosses from the cancelling task to the synchronous worker.
-final class ArchiveCancellation: @unchecked Sendable {
-    private let lock = NSLock()
-    private var cancelled = false
+final class ArchiveCancellation: Sendable {
+    private let cancelled = OSAllocatedUnfairLock(initialState: false)
 
     func cancel() {
-        lock.lock()
-        defer { lock.unlock() }
-        cancelled = true
+        cancelled.withLock { $0 = true }
     }
 
     func check() throws {
-        lock.lock()
-        defer { lock.unlock() }
-        if cancelled {
+        if cancelled.withLock({ $0 }) {
             throw CancellationError()
         }
     }

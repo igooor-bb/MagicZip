@@ -7,8 +7,10 @@ let options: [String]
 switch Script.arguments {
 case []:
     options = ["-i"]
+
 case ["--check"]:
     options = ["--dry-run", "--Werror"]
+
 default:
     die("Usage: format-c.swift [--check]", status: 2)
 }

@@ -1,8 +1,7 @@
 internal import CMinizip
 import Foundation
 
-/// The noncopyable owner expresses the C handle's single lifetime internally. Public scoped
-/// reference sessions support ergonomic throwing callbacks without exposing pointer ownership.
+/// Owns a C handle until the scoped operation closes it, with a deinit fallback on failure.
 struct NativeArchive: ~Copyable {
     var pointer: OpaquePointer?
 
@@ -43,7 +42,7 @@ struct StreamBuffer: ~Copyable {
 /// Status values retain minizip meanings across the private C bridge: -100 end-of-list,
 /// -103 invalid format, -107 absent item, -108 password required, -116 write failure.
 /// https://github.com/zlib-ng/minizip-ng/blob/4.2.2/mz.h
-func check(_ status: Int32, _ operation: ZIPBackendOperation, path: String? = nil) throws {
+func check(_ status: Int32, _ operation: ZIPBackendOperation, path: String? = nil) throws(ZIPError) {
     guard status == 0 else {
         throw ZIPError.backend(operation: operation, path: path, status: status)
     }

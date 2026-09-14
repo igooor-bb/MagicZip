@@ -17,10 +17,12 @@ enum PerformanceProbe {
             try ZIPWriter.withArchive(at: archive, password: password, overwrite: .replace) {
                 try $0.add(file: root.appendingPathComponent("payload"), path: "payload", compression: compression)
             }
+
         case "tree":
             try ZIPWriter.withArchive(at: archive, password: password, overwrite: .replace) {
                 try $0.add(directory: root.appendingPathComponent("small"), path: "small", compression: compression)
             }
+
         case "read":
             var count: Int64 = 0
             try ZIPReader.withArchive(at: archive) {
@@ -31,10 +33,12 @@ enum PerformanceProbe {
             guard count > 0 else {
                 throw ProbeError.empty
             }
+
         case "extract":
             try ZIPReader.withArchive(at: archive) {
                 try $0.extract(to: root.appendingPathComponent("extracted"), password: password, overwrite: .replace)
             }
+
         case "paths":
             #if BASELINE
                 let limits = ZIPLimits()
@@ -44,6 +48,7 @@ enum PerformanceProbe {
             try ZIPReader.withArchive(at: root, limits: limits) { guard $0.entries.count == 1 else {
                 throw ProbeError.empty
             } }
+
         default:
             throw ProbeError.argument
         }

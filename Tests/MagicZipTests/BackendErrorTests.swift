@@ -22,7 +22,7 @@ struct BackendErrorTests {
         do {
             try check(-32000, .readEntry, path: "file.txt")
             Issue.record("Unknown nonzero code was accepted")
-        } catch let error as ZIPError {
+        } catch {
             guard case let .backend(operation, path, raw) = error else {
                 Issue.record("Backend context was lost")
                 return

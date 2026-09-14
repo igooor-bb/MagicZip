@@ -11,7 +11,7 @@
 --blank-line-after-switch-case always
 --trailing-commas always
 --exclude Sources/CMinizip,.build,.swiftpm,.cache,Pods,Validation/PodClient/Pods,Validation/PodClient/Client.xcodeproj
---enable wrapGuardStatementBodies,wrapFunctionBodies,wrapCaseBodies
+--enable wrapGuardStatementBodies,wrapFunctionBodies,wrapCaseBodies,blankLineAfterSwitchCase
 --semicolons never
 --wrap-conditions before-first
 --allow-partial-wrapping false

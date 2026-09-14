@@ -110,52 +110,76 @@ public struct ZIPBackendStatus: RawRepresentable, Sendable, Hashable, CustomStri
             switch self {
             case .success:
                 ("MZ_OK", "Operation completed successfully.")
+
             case .streamError:
                 ("MZ_STREAM_ERROR", "Stream operation failed or the codec stream state is invalid.")
+
             case .dataError:
                 ("MZ_DATA_ERROR", "Archive data is invalid, corrupted, or has an unexpected size.")
+
             case .memoryError:
                 ("MZ_MEM_ERROR", "The backend could not allocate memory.")
+
             case .bufferError:
                 ("MZ_BUF_ERROR", "A buffer limit was reached or the codec could not make progress.")
+
             case .versionError:
                 ("MZ_VERSION_ERROR", "The codec version is incompatible.")
+
             case .endOfList:
                 ("MZ_END_OF_LIST", "End of archive entry list.")
+
             case .endOfStream:
                 ("MZ_END_OF_STREAM", "End of data stream.")
+
             case .parameterError:
                 ("MZ_PARAM_ERROR", "A backend parameter or operation state is invalid.")
+
             case .formatError:
                 ("MZ_FORMAT_ERROR", "The ZIP structure or metadata is invalid.")
+
             case .internalError:
                 ("MZ_INTERNAL_ERROR", "An internal backend operation failed.")
+
             case .integrityError:
                 ("MZ_CRC_ERROR", "Integrity verification failed (CRC or AES authentication).")
+
             case .cryptographicError:
                 ("MZ_CRYPT_ERROR", "A cryptographic operation failed.")
+
             case .notFound:
                 ("MZ_EXIST_ERROR", "The requested item or backend property was not found.")
+
             case .passwordError:
                 ("MZ_PASSWORD_ERROR", "A password is missing or does not match.")
+
             case .unsupported:
                 ("MZ_SUPPORT_ERROR", "The backend does not support this archive feature or operation.")
+
             case .hashError:
                 ("MZ_HASH_ERROR", "A hash operation or verification failed.")
+
             case .openError:
                 ("MZ_OPEN_ERROR", "The backend could not open a stream.")
+
             case .closeError:
                 ("MZ_CLOSE_ERROR", "The backend could not close or finalize a stream.")
+
             case .seekError:
                 ("MZ_SEEK_ERROR", "The backend could not seek to the requested position.")
+
             case .tellError:
                 ("MZ_TELL_ERROR", "The backend could not determine the stream position.")
+
             case .readError:
                 ("MZ_READ_ERROR", "The backend could not read the requested data.")
+
             case .writeError:
                 ("MZ_WRITE_ERROR", "The backend could not write all requested data.")
+
             case .signatureError:
                 ("MZ_SIGN_ERROR", "A digital signature operation or verification failed.")
+
             case .symlinkError:
                 ("MZ_SYMLINK_ERROR", "The backend rejected or could not process a symbolic link.")
             }
@@ -184,24 +208,35 @@ extension ZIPError: LocalizedError {
         switch self {
         case let .backend(operation, path, status):
             "Failed to \(operation.rawValue)\(path.map { " [\($0)]" } ?? ""): \(ZIPBackendStatus(rawValue: status))"
+
         case let .fileSystem(operation, path, code):
-            "Failed to \(operation) [\(path)]: \(NSError(domain: NSPOSIXErrorDomain, code: Int(code)).localizedDescription) (POSIX \(code))"
+            "Failed to \(operation.rawValue) [\(path)]: " +
+                "\(NSError(domain: NSPOSIXErrorDomain, code: Int(code)).localizedDescription) (POSIX \(code))"
+
         case .closed:
             "The archive session is closed or was invalidated by an earlier failure."
+
         case .busy:
             "The archive session is already performing an operation."
+
         case let .invalidArgument(reason):
             "Invalid archive option: \(reason)"
+
         case let .unsafePath(path):
             "Unsafe archive path: \(path)"
+
         case let .conflictingPath(path):
             "Conflicting archive path: \(path)"
+
         case let .unsupported(path, feature):
             "Unsupported archive feature\(path.map { " [\($0)]" } ?? ""): \(feature)"
+
         case let .limitExceeded(context):
             "Archive resource limit exceeded: \(context)"
+
         case let .entryNotFound(path):
             "Archive entry not found: \(path)"
+
         case let .combined(primary, cleanup):
             "\(primary.localizedDescription) Cleanup also failed: \(cleanup.localizedDescription)"
         }

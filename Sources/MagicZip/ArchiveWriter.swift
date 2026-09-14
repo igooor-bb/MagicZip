@@ -9,14 +9,17 @@ import Foundation
 /// the session, even if its error is caught inside the body, so partial archives cannot be
 /// published. Escaped writers are closed after the body. Use separate writers for concurrency.
 final class ArchiveWriter {
+
     private var native: NativeArchive
     private let gate = NSLock()
     private let cancellation: ArchiveCancellation?
     private let securePassword: String?
     private var failed = false
+
     private let outputIdentity: FileIdentity
     private let stagingIdentity: FileIdentity
     private let previousIdentity: FileIdentity?
+
     private var paths = EntryPaths()
     private var entryCount = 0
     private var pathBytes = 0
@@ -29,17 +32,21 @@ final class ArchiveWriter {
     ) throws {
         outputIdentity = try FileIdentity(fileDescriptor)
         stagingIdentity = try FileIdentity(transaction.directory)
+
         var previous = stat()
         if fstatat(transaction.parent.raw, transaction.destination, &previous, AT_SYMLINK_NOFOLLOW) == 0 {
             previousIdentity = FileIdentity(previous)
         } else {
             guard errno == ENOENT else {
-                throw ZIPError.fileSystem(operation: "inspect destination", path: transaction.destination, code: errno)
+                throw ZIPError.fileSystem(operation: .inspectDestination, path: transaction.destination, code: errno)
             }
+
             previousIdentity = nil
         }
+
         self.securePassword = securePassword
         self.cancellation = cancellation
+
         native = try NativeArchive(fileDescriptor: fileDescriptor, writing: true)
         if securePassword != nil {
             magiczip_mask_headers(native.pointer)
@@ -74,6 +81,7 @@ final class ArchiveWriter {
     ) throws -> T {
         try checkCancellation(cancellation)
         let transaction = try OutputTransaction(destination: url)
+
         return try completing {
             let descriptor = try transaction.createFile("archive.zip")
             let writer = try ArchiveWriter(
@@ -82,17 +90,22 @@ final class ArchiveWriter {
                 cancellation: cancellation,
                 securePassword: securePassword,
             )
+
             let result = try completing {
                 let result = try body(writer)
+
                 guard !writer.failed else {
                     throw ZIPError.closed
                 }
+
                 return result
             } cleanup: {
                 try writer.finish()
             }
+
             try checkCancellation(cancellation)
             try transaction.publish(file: "archive.zip", overwrite: overwrite)
+
             return result
         } cleanup: {
             try transaction.cleanup()
@@ -120,10 +133,13 @@ final class ArchiveWriter {
             guard offset < data.count else {
                 return nil
             }
+
             let end = offset + min(maximum, data.count - offset)
             defer { offset = end }
+
             let startIndex = data.index(data.startIndex, offsetBy: offset)
             let endIndex = data.index(data.startIndex, offsetBy: end)
+
             return Data(data[startIndex ..< endIndex])
         }
     }
@@ -140,10 +156,12 @@ final class ArchiveWriter {
         try operation {
             let descriptor = try FileSystem.openFile(url)
             var info = stat()
-            try descriptor.withCheckedClose(operation: "close source", path: url.path) { descriptor in
+
+            try descriptor.withCheckedClose(operation: .closeSource, path: url.path) { descriptor in
                 guard fstat(descriptor.raw, &info) == 0 else {
-                    throw ZIPError.fileSystem(operation: "inspect source", path: url.path, code: errno)
+                    throw ZIPError.fileSystem(operation: .inspectSource, path: url.path, code: errno)
                 }
+
                 try appendFile(descriptor, info: info, path: path, compression: compression, password: password)
             }
         }
@@ -183,7 +201,7 @@ final class ArchiveWriter {
         // This outer gate protects the complete recursive operation and uses private helpers below.
         try operation {
             let root = try FileSystem.openDirectory(url)
-            try root.withCheckedClose(operation: "close source root", path: path) {
+            try root.withCheckedClose(operation: .closeSourceRoot, path: path) {
                 try appendTree(descriptor: $0, path: path, compression: compression, password: password)
             }
         }
@@ -228,11 +246,17 @@ final class ArchiveWriter {
         guard gate.try() else {
             throw ZIPError.busy
         }
+
         defer { gate.unlock() }
+
         guard native.pointer != nil, !failed else {
             throw ZIPError.closed
         }
-        do { return try body() } catch { failed = true
+
+        do {
+            return try body()
+        } catch {
+            failed = true
             throw error
         }
     }
@@ -241,12 +265,16 @@ final class ArchiveWriter {
         guard gate.try() else {
             throw ZIPError.busy
         }
+
         defer { gate.unlock() }
+
         try completing {
             if let securePassword, !failed {
                 try native.writeCatalog(password: securePassword, cancellation: cancellation)
             }
-        } cleanup: { try native.close() }
+        } cleanup: {
+            try native.close()
+        }
     }
 
     private func append(
@@ -258,56 +286,69 @@ final class ArchiveWriter {
         producer: (_ consume: (UnsafeRawBufferPointer) throws -> Void) throws -> Void,
     ) throws {
         try checkCancellation(cancellation)
+
         // Application budgets for retained names/tree nodes, not ZIP64 capacity limits.
         // Keep these consistent with EntryPaths defaults and the tree-enumeration budget below.
         guard entryCount < 100_000, path.utf8.count <= 16 * 1024 * 1024 - pathBytes else {
             throw ZIPError.limitExceeded("Writer metadata")
         }
+
         try paths.insert(path, directory: directory)
         entryCount += 1
         pathBytes += path.utf8.count
+
         let method: Int16
         let level: Int16
+
         // ZIP method IDs: 0 = Store, 8 = Deflate (APPNOTE 4.4.5).
         // https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
         switch compression {
         case .store:
             method = 0
             level = 0
+
         case let .deflate(value):
             method = 8
             level = Int16(value.rawValue)
         }
+
         let timestamp = modificationDate.timeIntervalSince1970
+
         // UTC epoch bounds: 1980-01-01 through 2107-12-31 23:59:59. DOS dates encode
         // a 7-bit year offset from 1980 (APPNOTE 4.4.6). These API bounds are UTC; minizip
         // encodes local time, so this guard alone does not ensure boundary-date fidelity.
         guard timestamp.isFinite, timestamp >= 315_532_800, timestamp <= 4_354_819_199 else {
             throw ZIPError.invalidArgument("ZIP timestamps must lie between 1980 and 2107")
         }
+
         try withPassword(password) { password in
             try check(
                 magiczip_write_open(native.pointer, path, directory ? 1 : 0, method, level, Int64(timestamp), password),
                 .openOutputEntry,
                 path: path,
             )
+
             try completing {
                 while true {
                     try checkCancellation(cancellation)
                     var received = false
+
                     try producer { bytes in
                         guard !received, !bytes.isEmpty, bytes.count <= 64 * 1024 else {
                             throw ZIPError.invalidArgument("Producer must return 1...65536 bytes or nil")
                         }
+
                         received = true
                         let written = magiczip_write(native.pointer, bytes.baseAddress, Int32(bytes.count))
                         if written < 0 {
                             try check(written, .writeEntry, path: path)
                         }
+
                         guard written == bytes.count else {
                             throw ZIPError.backend(operation: .shortWrite, path: path, status: -116)
                         }
                     }
+
                     if !received {
                         break
                     }
@@ -320,6 +361,7 @@ final class ArchiveWriter {
 
     private func validateSource(_ info: stat, path: String) throws {
         let identity = FileIdentity(info)
+
         guard identity != outputIdentity, identity != stagingIdentity, identity != previousIdentity else {
             throw ZIPError.conflictingPath("Source overlaps archive transaction: " + path)
         }
@@ -333,6 +375,7 @@ final class ArchiveWriter {
         password: String?,
     ) throws {
         try validateSource(info, path: path)
+
         let storage = StreamBuffer(count: 64 * 1024)
         try storage.withUnsafeMutableBytes { buffer in
             try append(
@@ -347,9 +390,11 @@ final class ArchiveWriter {
                     count = Darwin.read(descriptor.raw, buffer.baseAddress, buffer.count)
                 } while
                     count < 0 && errno == EINTR
+
                 guard count >= 0 else {
-                    throw ZIPError.fileSystem(operation: "read source", path: path, code: errno)
+                    throw ZIPError.fileSystem(operation: .readSource, path: path, code: errno)
                 }
+
                 if count > 0 {
                     try consume(UnsafeRawBufferPointer(rebasing: buffer.prefix(count)))
                 }
@@ -364,15 +409,18 @@ final class ArchiveWriter {
         var pendingCount = 0
         var pendingBytes = 0
         var entering = true
+
         repeat {
             try checkCancellation(cancellation)
+
             if entering {
                 let directory = try FileSystem.reopen(descriptor, components: components)
-                let names = try directory.withCheckedClose(operation: "close source directory", path: path) { directory in
+                let names = try directory.withCheckedClose(operation: .closeSourceDirectory, path: path) { directory in
                     var info = stat()
                     guard fstat(directory.raw, &info) == 0 else {
-                        throw ZIPError.fileSystem(operation: "inspect source", path: path, code: errno)
+                        throw ZIPError.fileSystem(operation: .inspectSource, path: path, code: errno)
                     }
+
                     try validateSource(info, path: path)
                     try append(
                         path: (prefix + components).joined(separator: "/") + "/",
@@ -381,6 +429,7 @@ final class ArchiveWriter {
                         password: nil,
                         modificationDate: Date(),
                     ) { _ in }
+
                     return try FileSystem.children(
                         directory,
                         maximum: 100_000 - pendingCount,
@@ -388,47 +437,59 @@ final class ArchiveWriter {
                         cancellation: cancellation,
                     ).sorted(by: >)
                 }
+
                 pendingCount += names.count
                 pendingBytes += names.reduce(0) { $0 + $1.utf8.count }
                 frames.append(names)
                 entering = false
             }
+
             if let name = frames[frames.count - 1].popLast() {
                 pendingCount -= 1
                 pendingBytes -= name.utf8.count
+
                 guard prefix.count + components.count + 1 <= 256 else {
                     throw ZIPError.limitExceeded("Path components")
                 }
+
                 let childPath = (prefix + components + [name]).joined(separator: "/")
                 let parent = try FileSystem.reopen(descriptor, components: components)
-                let descend = try parent.withCheckedClose(operation: "close source parent", path: childPath) { parent in
+                let descend = try parent.withCheckedClose(operation: .closeSourceParent, path: childPath) { parent in
                     let child = try FileDescriptor(
                         openat(parent.raw, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC),
-                        operation: "open source child",
+                        operation: .openSourceChild,
                         path: childPath,
                     )
-                    return try child.withCheckedClose(operation: "close source child", path: childPath) { child in
+
+                    return try child.withCheckedClose(operation: .closeSourceChild, path: childPath) { child in
                         var info = stat()
                         guard fstat(child.raw, &info) == 0 else {
-                            throw ZIPError.fileSystem(operation: "inspect source", path: childPath, code: errno)
+                            throw ZIPError.fileSystem(operation: .inspectSource, path: childPath, code: errno)
                         }
+
                         try validateSource(info, path: childPath)
+
                         if info.st_mode & S_IFMT == S_IFDIR {
                             return true
                         }
+
                         guard info.st_mode & S_IFMT == S_IFREG else {
                             throw ZIPError.unsupported(path: childPath, feature: "Nonregular source file")
                         }
+
                         try appendFile(child, info: info, path: childPath, compression: compression, password: password)
+
                         return false
                     }
                 }
+
                 if descend {
                     components.append(name)
                     entering = true
                 }
             } else {
                 frames.removeLast()
+
                 if !components.isEmpty {
                     components.removeLast()
                 }
