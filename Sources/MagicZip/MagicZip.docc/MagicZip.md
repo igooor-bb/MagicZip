@@ -27,7 +27,7 @@ func example(archive: URL, destination: URL) throws {
         try writer.add(
             data: Data("Hello".utf8),
             path: "documents/hello.txt",
-            compression: .deflate(level: 6),
+            compression: .deflate(level: .balanced),
         )
     }
     try ZIPReader.withArchive(at: archive) { reader in

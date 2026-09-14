@@ -4,6 +4,31 @@ import Testing
 @testable import MagicZip
 
 struct ArchiveTests {
+    @Test(arguments: ZIPCompression.DeflateLevel.allCases)
+    func `deflate levels round trip`(level: ZIPCompression.DeflateLevel) throws {
+        try temporaryDirectory { root in
+            let archive = root.appendingPathComponent("deflate.zip")
+            let expected = Data(repeating: 42, count: 4096)
+            try ZIPWriter.withArchive(at: archive) { writer in
+                try writer.add(data: expected, path: "file", compression: .deflate(level: level))
+            }
+            try ZIPReader.withArchive(at: archive) { reader in
+                let actual = try reader.data(path: "file")
+                #expect(actual == expected)
+                #expect(reader.entries.first?.compressionMethod == 8)
+            }
+        }
+    }
+
+    @Test func `deflate levels validate external values`() {
+        #expect(ZIPCompression.DeflateLevel(rawValue: -1) == nil)
+        #expect(ZIPCompression.DeflateLevel(rawValue: 0) == nil)
+        #expect(ZIPCompression.DeflateLevel(rawValue: 10) == nil)
+        #expect(ZIPCompression.deflate() == .deflate(level: .level6))
+        #expect(ZIPCompression.DeflateLevel.fastest == .level1)
+        #expect(ZIPCompression.DeflateLevel.bestCompression == .level9)
+    }
+
     @Test(arguments: ["sszip-plain.zip", "sszip-aes.zip"])
     func `independent reference fixtures`(name: String) throws {
         let password = name.contains("aes") ? "interop-password" : nil

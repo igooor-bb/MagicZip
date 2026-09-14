@@ -71,11 +71,51 @@ public enum ZIPCompression: Sendable, Equatable {
 
     /// Compresses the file using Deflate.
     ///
-    /// - Parameter level: The compression level, from 0 to 9. Defaults to 6.
-    ///   Level 0 stores the file without compression. Higher levels favor smaller output over speed.
+    /// - Parameter level: The balance between compression speed and output size. Defaults to `.balanced`.
+    case deflate(level: DeflateLevel = .balanced)
+
+    /// The compression effort used by Deflate.
     ///
-    /// Values outside this range cause the write operation to throw.
-    case deflate(level: Int = 6)
+    /// Higher levels favor smaller output over speed. Use ``fastest``, ``balanced`` or
+    /// ``bestCompression`` for common choices, or select a specific level.
+    public enum DeflateLevel: Int, Sendable, CaseIterable {
+
+        /// Uses compression level 1, favoring speed.
+        case level1 = 1
+
+        /// Uses compression level 2.
+        case level2 = 2
+
+        /// Uses compression level 3.
+        case level3 = 3
+
+        /// Uses compression level 4.
+        case level4 = 4
+
+        /// Uses compression level 5.
+        case level5 = 5
+
+        /// Uses compression level 6, balancing speed and output size.
+        case level6 = 6
+
+        /// Uses compression level 7.
+        case level7 = 7
+
+        /// Uses compression level 8.
+        case level8 = 8
+
+        /// Uses compression level 9, favoring smaller output.
+        case level9 = 9
+
+        /// The fastest level that compresses file contents, equivalent to ``level1``.
+        public static let fastest: Self = .level1
+
+        /// The default balance of speed and output size, equivalent to ``level6``.
+        public static let balanced: Self = .level6
+
+        /// The highest compression effort, equivalent to ``level9``.
+        public static let bestCompression: Self = .level9
+    }
 }
 
 /// The encryption used for an archive entry.
@@ -140,6 +180,7 @@ public struct ZIPEntry: Sendable, Equatable {
     /// This is the archive's CRC-32 value. AE-2 encrypted entries normally store zero and use
     /// AES authentication instead. Reading the entry performs the applicable integrity checks.
     public let crc32: UInt32
+
     let position: Int64
 }
 

@@ -103,7 +103,7 @@ final class ArchiveWriter {
     /// - Parameters:
     ///   - data: Bytes to store; they are consumed synchronously and not retained afterward.
     ///   - path: Relative UTF-8 file path without a trailing slash.
-    ///   - compression: Store or Deflate with level `0...9`.
+    ///   - compression: The compression method and level.
     ///   - password: Optional AES-256 password, 1...128 UTF-8 bytes without NUL.
     ///   - modificationDate: Timestamp; defaults to the time of the call.
     /// - Throws: ``ZIPError`` for invalid/conflicting paths, options, write or finalization errors;
@@ -132,7 +132,7 @@ final class ArchiveWriter {
     /// - Parameters:
     ///   - url: Source file; symlinks and nonregular files are rejected, including symlink parents.
     ///   - path: Relative archive path, independent of the source filename.
-    ///   - compression: Store or Deflate with level `0...9`.
+    ///   - compression: The compression method and level.
     ///   - password: Optional AES-256 password.
     /// - Throws: The errors documented for ``addStream(path:compression:password:modificationDate:producer:)``
     ///   and filesystem errors. Source contents must remain unchanged until this call completes.
@@ -192,7 +192,7 @@ final class ArchiveWriter {
     /// Adds an entry from a bounded, synchronous producer. ZIP64 is enabled for unknown final sizes.
     /// - Parameters:
     ///   - path: Relative UTF-8 file path.
-    ///   - compression: Store or Deflate; level must be `0...9`.
+    ///   - compression: The compression method and level.
     ///   - password: Optional AES-256 password, 1...128 UTF-8 bytes without NUL.
     ///   - modificationDate: Timestamp recorded in the entry.
     ///   - producer: Receives the maximum requested bytes (64 KiB). Return a nonempty `Data` no
@@ -275,13 +275,8 @@ final class ArchiveWriter {
             method = 0
             level = 0
         case let .deflate(value):
-            // zlib accepts explicit levels 0...9; -1 is its default sentinel, not part of our API.
-            // https://zlib.net/manual.html (deflateInit)
-            guard (0 ... 9).contains(value) else {
-                throw ZIPError.invalidArgument("Deflate level must be in 0...9")
-            }
             method = 8
-            level = Int16(value)
+            level = Int16(value.rawValue)
         }
         let timestamp = modificationDate.timeIntervalSince1970
         // UTC epoch bounds: 1980-01-01 through 2107-12-31 23:59:59. DOS dates encode

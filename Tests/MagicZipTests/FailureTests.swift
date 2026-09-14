@@ -92,11 +92,6 @@ struct FailureTests {
                 }
             }
             #expect(throws: ZIPError.self) {
-                try ZIPWriter.withArchive(at: root.appendingPathComponent("bad.zip")) {
-                    try $0.add(data: Data(), path: "a", compression: .deflate(level: 10))
-                }
-            }
-            #expect(throws: ZIPError.self) {
                 try ZIPWriter.withArchive(at: root.appendingPathComponent("bad.zip"), password: "") {
                     try $0.add(data: Data(), path: "a")
                 }

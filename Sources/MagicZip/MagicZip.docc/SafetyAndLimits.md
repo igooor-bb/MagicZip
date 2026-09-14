@@ -40,7 +40,7 @@ Reader limits apply to advertised and actual output. These are application budge
 
 ## Format support
 
-- Store and Deflate (levels 0...9 for writing, with zero mapped to Store).
+- Store and Deflate (levels 1...9 for writing).
 - Plaintext and WinZIP AES-256: AE-1/AE-2 reading and AE-2 writing.
 - UTF-8 names, ASCII without the UTF-8 flag, empty files/directories and ZIP64.
 

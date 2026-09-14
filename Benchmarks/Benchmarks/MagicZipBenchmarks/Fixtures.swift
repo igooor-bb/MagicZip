@@ -19,7 +19,7 @@ enum ArchiveVariant: String, CaseIterable {
         case .store, .storeAES:
             .store
         case .deflate, .deflateAES:
-            .deflate(level: 6)
+            .deflate(level: .balanced)
         }
     }
 
