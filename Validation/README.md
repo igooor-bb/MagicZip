@@ -1,9 +1,6 @@
 # Validation
 
-Run from the repository root with Xcode 26+ selected. mise pins Python, uv, Ruby,
-SwiftFormat, clang-format and SwiftLint; `uv.lock` pins fixture packages and `Gemfile.lock`
-pins CocoaPods/xcodeproj and transitive gems. No Python/Ruby dependency is needed by a
-normal library build.
+Run from the repository root with Xcode 26+ selected. mise pins Python, uv, Ruby, SwiftFormat, clang-format and SwiftLint; `uv.lock` pins fixture packages and `Gemfile.lock` pins CocoaPods/xcodeproj and transitive gems. No Python/Ruby dependency is needed by a normal library build.
 
 ```sh
 mise install
@@ -15,96 +12,50 @@ mise run validate-compatibility
 mise run validate-memory
 ```
 
-`validate-apple` compiles the SPM library for macOS, iOS device and iOS Simulator, then
-runs DocC with documentation warnings treated as errors. `validate-pods` generates
-throwaway Xcode projects, uses `bundle exec` to install local specs, compiles real
-Swift clients for all three destinations, runs the macOS client and lints the podspec
-in static-library mode. Its Podfile uses SSZipArchive 2.5.5 (or `MAGICZIP_SSZIP_SOURCE`
-for an already fetched checkout). The fixture/interoperability SPM package pins the
-same version independently.
+`validate-apple` compiles the SPM library for macOS, iOS device and iOS Simulator, then runs DocC with documentation warnings treated as errors. `validate-pods` generates throwaway Xcode projects, uses `bundle exec` to install local specs, compiles real Swift clients for all three destinations, runs the macOS client and lints the podspec in static-library mode. Its Podfile uses SSZipArchive 2.5.5 (or `MAGICZIP_SSZIP_SOURCE` for an already fetched checkout). The fixture/interoperability SPM package pins the same version independently.
 
-The only lint warnings explicitly allowed are nonfatal diagnostics: this checkout's
-source/homepage may not yet be published, and upstream/SDK builds may emit warnings.
-A compiler, linker, dependency-resolution or validation error still fails the command.
-No validation task publishes pods, pushes commits, or uploads artifacts.
+The only lint warnings explicitly allowed are nonfatal diagnostics: this checkout's source/homepage may not yet be published, and upstream/SDK builds may emit warnings. A compiler, linker, dependency-resolution or validation error still fails the command. No validation task publishes pods, pushes commits, or uploads artifacts.
 
 ## Independent fixtures and interoperability
 
-`Tests/MagicZipTests/Fixtures` contains independent Python zipfile, pyzipper and
-SSZipArchive archives. The main Swift Testing suite never needs network access.
-`Validation/Compatibility` links MagicZip and SSZipArchive in the same process, creates
-plaintext/AES archives with each implementation and reads them with the other.
+`Tests/MagicZipTests/Fixtures` contains independent Python zipfile, pyzipper and SSZipArchive archives. The main Swift Testing suite never needs network access. `Validation/Compatibility` links MagicZip and SSZipArchive in the same process, creates plaintext/AES archives with each implementation and reads them with the other.
 
 ```sh
 mise run fixtures-python
 swift run --package-path Validation/Compatibility CompatibilityValidation Tests/MagicZipTests/Fixtures
 ```
 
-Regeneration changes random AES salts. Review fixtures and refresh their SHA256 manifest.
-Python tooling is isolated in `.venv`; Ruby dependencies in `.bundle/gems`; neither is
-committed. Always use `uv run --locked --group fixtures` and `bundle exec` rather than
-ambient Python packages or a system `pod` binary.
+Regeneration changes random AES salts. Review fixtures and refresh their SHA256 manifest. Python tooling is isolated in `.venv`; Ruby dependencies in `.bundle/gems`; neither is committed. Always use `uv run --locked --group fixtures` and `bundle exec` rather than ambient Python packages or a system `pod` binary.
 
 ## Memory and selectivity
 
-`Validation/StreamingProbe` streams a 512 MiB Store entry without allocating its full
-contents, reads it back, corrupts the large payload, then extracts only a small second
-entry. It asserts that no other file appears and reports the *executed process's*
-peak RSS with `getrusage`, excluding compiler memory. The process budget is 128 MiB. To also verify a real entry beyond 4 GiB:
+`Validation/StreamingProbe` streams a 512 MiB Store entry without allocating its full contents, reads it back, corrupts the large payload, then extracts only a small second entry. It asserts that no other file appears and reports the *executed process's* peak RSS with `getrusage`, excluding compiler memory. The process budget is 128 MiB. To also verify a real entry beyond 4 GiB:
 
 ```sh
 mise exec -- swift run -c release --package-path Validation/StreamingProbe StreamingProbe --zip64
 ```
 
-This streams 5 GiB through Deflate and verifies the ZIP64 sizes on read; the compressed
-scratch archive is much smaller. Both modes remove their scratch files afterward.
-This measures bounded payload memory, not constant metadata memory for unlimited entries.
+This streams 5 GiB through Deflate and verifies the ZIP64 sizes on read; the compressed scratch archive is much smaller. Both modes remove their scratch files afterward. This measures bounded payload memory, not constant metadata memory for unlimited entries.
 
 ## Failure checks
 
-Swift Testing covers independent formats, exact lookup and metadata lifetime, streaming,
-selective extraction, traversal/aliases/symlinks, corrupt payloads and HMAC, truncation,
-wrong passwords, limits, failure cleanup, overwrite and closed/reentrant sessions.
-A test-only C stream injects failures precisely during Deflate and central-directory
-finalization. A read-only descriptor substitution tests errors from the final file flush
-without introducing a descriptor-reuse race between parallel tests.
+Swift Testing covers independent formats, exact lookup and metadata lifetime, streaming, selective extraction, traversal/aliases/symlinks, corrupt payloads and HMAC, truncation, wrong passwords, limits, failure cleanup, overwrite and closed/reentrant sessions. A test-only C stream injects failures precisely during Deflate and central-directory finalization. A read-only descriptor substitution tests errors from the final file flush without introducing a descriptor-reuse race between parallel tests.
 
 ## Reliability and ownership regressions
 
-Normal `mise run check` includes Swift Testing checks for component/node limits, Unicode
-aliases, long flat registries, exact subtree selection (including Unix directories without
-`/`), scan/cancellation plus close failure, retained owned chunks and independent Store AES.
-The new fixtures have reproducible generators and are listed in the SHA-256 manifest.
+Normal `mise run check` includes Swift Testing checks for component/node limits, Unicode aliases, long flat registries, exact subtree selection (including Unix directories without `/`), scan/cancellation plus close failure, retained owned chunks and independent Store AES. The new fixtures have reproducible generators and are listed in the SHA-256 manifest.
 
 ```sh
 mise run validate-trees
 ```
 
-This separate task builds first, then runs only the serial `TreeResourceTests` suite in a
-child process with a 120-second outer timeout. The suite sets `RLIMIT_NOFILE=128` and a
-128 MiB per-file limit after SwiftPM startup, so process-wide limits do not affect ordinary
-parallel tests or compiler caches. It checks depths 24/96/192, cleanup of a 300-level old
-destination, depth-96 CRC/cancellation failures, source cancellation, 2,000 siblings and
-self-input aliases after nonempty output. A destination inside its source is never benchmarked
-without process/time/file-size bounds. These costly/resource-limited cases are separate from
-normal check/CI; normal tests do not impose timing thresholds.
+This separate task builds first, then runs only the serial `TreeResourceTests` suite in a child process with a 120-second outer timeout. The suite sets `RLIMIT_NOFILE=128` and a 128 MiB per-file limit after SwiftPM startup, so process-wide limits do not affect ordinary parallel tests or compiler caches. It checks depths 24/96/192, cleanup of a 300-level old destination, depth-96 CRC/cancellation failures, source cancellation, 2,000 siblings and self-input aliases after nonempty output. A destination inside its source is never benchmarked without process/time/file-size bounds. These costly/resource-limited cases are separate from normal check/CI; normal tests do not impose timing thresholds.
 
-The observed traversal FD peak is sampled every 0.5 ms with `fcntl`, at the three depths.
-Sampling is evidence, not a proof of every transient peak: the implementation separately
-bounds live traversal descriptors by closing each reopened ancestor before the next step.
-Cleanup frames own at most 256 pending names per level; source frames have a combined
-100,000-name/16 MiB budget. Reopening trades O(sum of visited depths) filesystem operations
-for descriptor usage independent of depth. Registry insertion remains expected O(name bytes).
+The observed traversal FD peak is sampled every 0.5 ms with `fcntl`, at the three depths. Sampling is evidence, not a proof of every transient peak: the implementation separately bounds live traversal descriptors by closing each reopened ancestor before the next step. Cleanup frames own at most 256 pending names per level; source frames have a combined 100,000-name/16 MiB budget. Reopening trades O(sum of visited depths) filesystem operations for descriptor usage independent of depth. Registry insertion remains expected O(name bytes).
 
 ## Reproducing Release measurements
 
-`PerformanceProbe` uses a real file through `add(file:)`, public reads, full extraction and
-2,000 small files. Each sample is a fresh process and reports wall time, application peak
-RSS and summed malloc-zone high-water/live-block statistics. Compiler memory is excluded.
-The driver uses the same deterministic 128 MiB file, alternating 64 KiB zero and seeded
-random blocks, and 2,000 files of 1 KiB. Compression is Store or Deflate level 6, plaintext
-or AES-256; writes/extraction include the normal fsync/close checks. File caches are not
-flushed. Every comparison has three alternating samples; the isolated CRC comparison has five.
+`PerformanceProbe` uses a real file through `add(file:)`, public reads, full extraction and 2,000 small files. Each sample is a fresh process and reports wall time, application peak RSS and summed malloc-zone high-water/live-block statistics. Compiler memory is excluded. The driver uses the same deterministic 128 MiB file, alternating 64 KiB zero and seeded random blocks, and 2,000 files of 1 KiB. Compression is Store or Deflate level 6, plaintext or AES-256; writes/extraction include the normal fsync/close checks. File caches are not flushed. Every comparison has three alternating samples; the isolated CRC comparison has five.
 
 ```sh
 mise exec -- swift build -c release --package-path Validation/StreamingProbe
@@ -115,18 +66,9 @@ python3 Scripts/benchmark-streaming.py /absolute/duplicate-crc/StreamingProbe \
   "$PWD/Validation/StreamingProbe/.build/release/StreamingProbe" --crc
 ```
 
-Build the baseline from `e50f984` in a separate checkout, copy the current probe's Swift files
-there, and compile it with `-c release -Xswiftc -DBASELINE` (only selects the old limits API).
-If that checkout's directory is not named MagicZip, use an explicit `name: "MagicZip"` on
-its local package dependency. Both C and Swift must be Release. One prerequisite correction
-is applied equally to both versions: the Store+AES raw-codec rebinding after authentication.
-Unmodified e50f984 fails Store+AES read/close with status -1, so it cannot supply a successful
-baseline for that matrix cell. This baseline adjustment does not remove integrity checks.
+Build the baseline from `e50f984` in a separate checkout, copy the current probe's Swift files there, and compile it with `-c release -Xswiftc -DBASELINE` (only selects the old limits API). If that checkout's directory is not named MagicZip, use an explicit `name: "MagicZip"` on its local package dependency. Both C and Swift must be Release. One prerequisite correction is applied equally to both versions: the Store+AES raw-codec rebinding after authentication. Unmodified e50f984 fails Store+AES read/close with status -1, so it cannot supply a successful baseline for that matrix cell. This baseline adjustment does not remove integrity checks.
 
-The checked-in adapter uses the upstream running CRC through patch 0003 and still compares
-it for plaintext/AE-1. The accessor avoids upstream's close-time compressed-size gate, which
-cannot replace the adapter check for AES. AE-2 HMAC and all size checks remain. Independent
-corrupt CRC/HMAC cases remain rejected. No experimental non-verifying benchmark backend ships.
+The checked-in adapter uses the upstream running CRC through patch 0003 and still compares it for plaintext/AE-1. The accessor avoids upstream's close-time compressed-size gate, which cannot replace the adapter check for AES. AE-2 HMAC and all size checks remain. Independent corrupt CRC/HMAC cases remain rejected. No experimental non-verifying benchmark backend ships.
 
 ## Measurements on 2026-09-11
 
@@ -177,18 +119,9 @@ Isolated CRC comparison (same Swift implementation, duplicate CRC vs patched acc
 
 Store read median improved about 16%; AES differences overlap noise. The small accessor is retained because it preserves the adapter’s checksum comparison and avoids redundant work without restructuring upstream verification. Patch application and the namespace are reproducible: a second import of 4.2.2 produced identical SHA-256 hashes for every vendor file.
 
-
 ## Formatting preferences
 
-SwiftFormat uses `wrapFunctionBodies`, `wrapGuardStatementBodies`, `--semicolons never`,
-`--wrap-conditions before-first`, `--allow-partial-wrapping false`, and
-`--type-blank-lines preserve`. Type bodies have a leading blank only before a comment;
-there is no leading blank before a plain stored property. These comment boundaries, including
-between enum cases and following doc blocks, are preserved but not automatically required
-by a built-in rule. SwiftLint's
-`multiline_arguments_brackets` is enabled; version 0.65.1 misses the nested `append(Entry(...))`
-case when both closing parentheses share a line. That call is expanded explicitly, and
-SwiftFormat preserves the layout. The user's `.swiftformat` remains outside these commits.
+SwiftFormat uses `wrapFunctionBodies`, `wrapGuardStatementBodies`, `--semicolons never`, `--wrap-conditions before-first`, `--allow-partial-wrapping false`, and `--type-blank-lines preserve`. Type bodies have a leading blank only before a comment; there is no leading blank before a plain stored property. These comment boundaries, including between enum cases and following doc blocks, are preserved but not automatically required by a built-in rule. SwiftLint's `multiline_arguments_brackets` is enabled; version 0.65.1 misses the nested `append(Entry(...))` case when both closing parentheses share a line. That call is expanded explicitly, and SwiftFormat preserves the layout. The user's `.swiftformat` remains outside these commits.
 
 ## Final verification
 
@@ -204,37 +137,14 @@ mise exec -- swift run -c release --package-path Validation/StreamingProbe Strea
 mise run validate-trees
 ```
 
-Apple validation built macOS, iOS and Simulator plus warning-checked DocC. CocoaPods built
-real clients, executed the macOS example and passed podspec validation under the existing
-warning policy. Compatibility also verified all 238 defined C globals are namespaced.
-The 512 MiB and 5 GiB probes reported 8.1 and 8.3 MiB peak RSS, respectively, and skipped the
-corrupt unselected payload. At source depths 24/96/192 the sampled FD baseline/peak was 3/9
-in each case, including deep replacement cleanup; CRC, extraction/source cancellation,
-wide directories and resource-limited self-input checks passed. These are local results,
-not device runtime or cold-storage performance claims.
+Apple validation built macOS, iOS and Simulator plus warning-checked DocC. CocoaPods built real clients, executed the macOS example and passed podspec validation under the existing warning policy. Compatibility also verified all 238 defined C globals are namespaced. The 512 MiB and 5 GiB probes reported 8.1 and 8.3 MiB peak RSS, respectively, and skipped the corrupt unselected payload. At source depths 24/96/192 the sampled FD baseline/peak was 3/9 in each case, including deep replacement cleanup; CRC, extraction/source cancellation, wide directories and resource-limited self-input checks passed. These are local results, not device runtime or cold-storage performance claims.
 
-Checks used the user's working-tree `.swiftformat` configuration, deliberately excluded from
-the commits. Its final settings must accompany these formatting changes when reproducing
-`format-check` elsewhere. `Validation/IMPROVEMENT_SPEC.md` is also left untouched and untracked.
+Checks used the user's working-tree `.swiftformat` configuration, deliberately excluded from the commits. Its final settings must accompany these formatting changes when reproducing `format-check` elsewhere. `Validation/IMPROVEMENT_SPEC.md` is also left untouched and untracked.
 
 ## Password API and Secure catalog validation
 
-The password API tests exercise the common-password writer across Data, file, tree
-and producer additions, and mixed extraction with per-entry resolution, selection,
-reentrancy rejection, missing passwords and throwing providers. Failed extraction
-preserves the existing destination.
+The password API tests exercise the common-password writer across Data, file, tree and producer additions, and mixed extraction with per-entry resolution, selection, reentrancy rejection, missing passwords and throwing providers. Failed extraction preserves the existing destination.
 
-Secure tests cover Store/Deflate, encrypted empty files and empty archives, masked
-UTF-8 names, multiple-entry random access, scoped/async lifetime, cancellation and
-poisoned writers. `Scripts/generate-secure-fixtures.py` independently builds CDCD
-archives with pyzipper and explicit ZIP records (no MagicZip or minizip code).
-Its fixtures exercise AES catalog authentication, oversized metadata, inconsistent
-entry count, traversal paths and corrupted file authentication with atomic rollback.
-All fixture hashes are recorded in `Fixtures/SHA256.json` under the test target.
+Secure tests cover Store/Deflate, encrypted empty files and empty archives, masked UTF-8 names, multiple-entry random access, scoped/async lifetime, cancellation and poisoned writers. `Scripts/generate-secure-fixtures.py` independently builds CDCD archives with pyzipper and explicit ZIP records (no MagicZip or minizip code). Its fixtures exercise AES catalog authentication, oversized metadata, inconsistent entry count, traversal paths and corrupted file authentication with atomic rollback. All fixture hashes are recorded in `Fixtures/SHA256.json` under the test target.
 
-For these API changes, `mise run check`, `mise run validate-apple`,
-`mise run validate-pods` and `mise run validate-compatibility` all exited zero.
-The compatibility client required `swift package --package-path Validation/Compatibility clean`
-to refresh SwiftPM's cached source list after adding Swift files. All 245 defined C
-globals remain namespaced. Reimporting minizip-ng 4.2.2 twice produced identical hashes
-for every vendor file. Secure compatibility with Finder is not claimed or tested.
+For these API changes, `mise run check`, `mise run validate-apple`, `mise run validate-pods` and `mise run validate-compatibility` all exited zero. The compatibility client required `swift package --package-path Validation/Compatibility clean` to refresh SwiftPM's cached source list after adding Swift files. All 245 defined C globals remain namespaced. Reimporting minizip-ng 4.2.2 twice produced identical hashes for every vendor file. Secure compatibility with Finder is not claimed or tested.

@@ -4,9 +4,7 @@ Read and create ZIP archives with bounded streaming and transactional extraction
 
 ## Overview
 
-MagicZip supports iOS 16+, iOS Simulator and macOS 13+, using Swift 6.2 in Xcode 26 or
-newer. It wraps an isolated minizip-ng C target and exposes only Swift values and scoped
-sessions. Normal builds require no network access, CMake, or third-party runtime libraries.
+MagicZip supports iOS 16+, iOS Simulator and macOS 13+, using Swift 6.2 in Xcode 26 or newer. It wraps an isolated minizip-ng C target and exposes only Swift values and scoped sessions. Normal builds require no network access, CMake, or third-party runtime libraries.
 
 ```swift
 import Foundation
@@ -27,10 +25,7 @@ func example(archive: URL, destination: URL) throws {
 }
 ```
 
-Use a parent directory that already exists. File URLs must contain no symlink components;
-this includes system aliases such as `/tmp` and `/var`. Supply the actual path (for example
-`/private/tmp`) when appropriate. Entry paths are always relative UTF-8 ZIP paths with `/`
-separators. Neither extraction nor archive creation follows symlinks.
+Use a parent directory that already exists. File URLs must contain no symlink components; this includes system aliases such as `/tmp` and `/var`. Supply the actual path (for example `/private/tmp`) when appropriate. Entry paths are always relative UTF-8 ZIP paths with `/` separators. Neither extraction nor archive creation follows symlinks.
 
 ## Topics
 
@@ -52,6 +47,7 @@ separators. Neither extraction nor archive creation follows symlinks.
 - ``SecureZIPReader``
 
 ### Options
+
 - ``ZIPCompression``
 - ``ZIPEncryption``
 - ``ZIPOverwrite``

@@ -1,0 +1,14 @@
+[global]
+extend-enable = ["MD060", "MD087"]
+exclude = ["Sources/CMinizip/**"]
+respect-gitignore = true
+cache-dir = ".cache/rumdl"
+
+# Keep each paragraph on one source line; the renderer handles visual wrapping.
+[MD013]
+line-length = 0
+reflow = true
+reflow-mode = "normalize"
+
+[MD060]
+style = "compact"

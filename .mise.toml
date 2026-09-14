@@ -7,6 +7,7 @@ uv = "0.12.11"
 ruby = "3.4.10"
 "conda:jemalloc" = "5.3.0"
 "github:igooor-bb/wift" = "0.1.0"
+"github:rvben/rumdl" = "0.2.73"
 
 [env]
 BUNDLE_PATH = "{{config_root}}/.bundle/gems"
@@ -25,6 +26,14 @@ run = ["swiftformat --lint .", "./Scripts/format-c.swift --check"]
 description = "Lint owned Swift sources"
 run = "swiftlint --strict"
 
+[tasks."lint-markdown"]
+description = "Lint Markdown documentation"
+run = "rumdl check ."
+
+[tasks."format-markdown"]
+description = "Format Markdown documentation"
+run = "rumdl fmt ."
+
 [tasks.test]
 description = "Run Swift Testing suite"
 run = "swift test"
@@ -35,7 +44,7 @@ run = "./Scripts/benchmark.swift"
 
 [tasks.check]
 description = "Run the same checks locally and in CI"
-depends = ["format-check", "lint", "test"]
+depends = ["format-check", "lint", "lint-markdown", "test"]
 
 [tasks.setup]
 description = "Install locked fixture and CocoaPods dependencies"
