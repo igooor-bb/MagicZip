@@ -6,18 +6,20 @@ python = "3.14.7"
 uv = "0.12.11"
 ruby = "3.4.10"
 "conda:jemalloc" = "5.3.0"
+"github:igooor-bb/wift" = "0.1.0"
 
 [env]
 BUNDLE_PATH = "{{config_root}}/.bundle/gems"
 BUNDLE_FROZEN = "true"
+WIFT_CACHE_DIR = "{{config_root}}/.cache/wift"
 
 [tasks.format]
 description = "Format owned Swift sources"
-run = ["swiftformat .", "./Scripts/format-c.sh"]
+run = ["swiftformat .", "./Scripts/format-c.swift"]
 
 [tasks."format-check"]
 description = "Check Swift formatting"
-run = ["swiftformat --lint .", "./Scripts/format-c.sh --check"]
+run = ["swiftformat --lint .", "./Scripts/format-c.swift --check"]
 
 [tasks.lint]
 description = "Lint owned Swift sources"
@@ -29,7 +31,7 @@ run = "swift test"
 
 [tasks.benchmark]
 description = "Run Release benchmarks or manage local baselines (arguments forwarded to Benchmark)"
-run = "bash Scripts/benchmark.sh"
+run = "./Scripts/benchmark.swift"
 
 [tasks.check]
 description = "Run the same checks locally and in CI"
@@ -45,15 +47,15 @@ run = "uv run --locked --group fixtures python Scripts/generate-fixtures.py"
 
 [tasks."validate-apple"]
 description = "Build Apple platforms and DocC"
-run = "./Scripts/validate-apple.sh"
+run = "./Scripts/validate-apple.swift"
 
 [tasks."validate-pods"]
 description = "Build real CocoaPods clients and validate podspecs"
-run = "./Scripts/validate-pods.sh"
+run = "./Scripts/validate-pods.swift"
 
 [tasks."validate-compatibility"]
 description = "Verify independent ZIP compatibility and C symbol isolation"
-run = "./Scripts/validate-compatibility.sh"
+run = "./Scripts/validate-compatibility.swift"
 
 [tasks."validate-memory"]
 description = "Measure peak RSS and selective extraction on a 512 MiB archive"
@@ -61,4 +63,8 @@ run = "swift run -c release --package-path Validation/StreamingProbe"
 
 [tasks."validate-trees"]
 description = "Isolated deep/wide traversal and self-input regressions with 128 FDs"
-run = "./Scripts/validate-trees.sh"
+run = "./Scripts/validate-trees.swift"
+
+[tasks."update-minizip"]
+description = "Import a reviewed minizip-ng tag or commit"
+run = "./Scripts/update-minizip.swift"

@@ -9,7 +9,7 @@
 --header strip
 --blank-line-after-switch-case always
 --trailing-commas always
---exclude Sources/CMinizip,.build,.swiftpm,Pods,Validation/PodClient/Pods,Validation/PodClient/Client.xcodeproj
+--exclude Sources/CMinizip,.build,.swiftpm,.cache,Pods,Validation/PodClient/Pods,Validation/PodClient/Client.xcodeproj
 --enable wrapGuardStatementBodies,wrapFunctionBodies,wrapCaseBodies
 --semicolons never
 --wrap-conditions before-first

@@ -26,6 +26,8 @@ The small header adapter in `Support` maps Benchmark's four unprefixed statistic
 it does not replace allocation functions or modify the upstream packages.
 The package's `Package.resolved` locks Swift dependencies. The conda version is pinned; record its installed build
 metadata with each baseline, since conda may publish multiple builds of one version.
+The wrapper is `Scripts/benchmark.swift`, launched by mise's pinned Wift with its cache in `.cache/wift/`.
+`Scripts/benchmark-metadata.py` retains the Python JSON and fingerprint handling after successful baseline updates.
 
 Baselines, including histograms and sample counts, live under `Benchmarks/.benchmarkBaselines/` and are ignored by Git.
 Successful `baseline update` calls also save environment metadata under `Benchmarks/results/`: baseline name, date,

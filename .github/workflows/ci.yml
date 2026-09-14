@@ -11,6 +11,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: jdx/mise-action@v4
+        with:
+          cache: true
+      - name: Cache compiled Wift scripts
+        uses: actions/cache@v6
+        with:
+          path: .cache/wift
+          key: wift-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('Scripts/**/*.swift') }}
+          restore-keys: |
+            wift-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.mise.toml') }}-
       - run: mise run check
       - run: mise run validate-apple
       - run: mise run setup

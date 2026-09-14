@@ -13,3 +13,4 @@ Validation/PodClient/Client.xcodeproj/
 __pycache__/
 Benchmarks/.benchmarkBaselines/
 Benchmarks/results/
+/.cache/

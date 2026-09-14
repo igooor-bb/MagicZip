@@ -3,7 +3,7 @@
 From the repository root on macOS, with Python 3, Git, curl and patch installed:
 
 ```sh
-./Scripts/update-minizip.sh --ref 4.2.2
+mise run update-minizip -- --ref 4.2.2
 # A full, 40-character upstream commit SHA is also accepted.
 ```
 
@@ -30,7 +30,7 @@ Run the command twice and compare file hashes/diffs before committing an update.
 There are no timestamps or machine-specific paths in generated metadata.
 
 After an upstream upgrade, review the allowlist, configuration and patches, run
-`mise run check`, `Scripts/validate-apple.sh` and the interoperability/large-archive
+`mise run check`, `mise run validate-apple` and the interoperability/large-archive
 checks described in the repository documentation. In particular, audit global C
 symbols: Clang module names alone cannot prevent link collisions with other ZIP implementations.
 
