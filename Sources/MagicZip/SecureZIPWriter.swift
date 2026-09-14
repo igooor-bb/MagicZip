@@ -10,19 +10,15 @@ import Foundation
 ///
 /// See <doc:PasswordsAndEncryption> for compatibility and catalog limits.
 ///
-/// Use the writer only inside its archive closure. Calls must not overlap or call back into
-/// this writer. Any failed addition invalidates the session, even if the closure catches the error.
+/// The archive closure borrows the writer, so it cannot be stored or returned.
+/// Calls must not overlap or call back into this writer. Any failed addition invalidates the session, even if the closure catches the
+/// error.
 ///
 /// See <doc:StreamingAndOwnership> for session behavior and <doc:SafetyAndLimits> for path,
 /// resource and overwrite rules.
-public final class SecureZIPWriter {
+public struct SecureZIPWriter: ~Copyable {
     private let core: ArchiveWriter
     private let password: String
-    private init(core: ArchiveWriter, password: String) {
-        self.core = core
-        self.password = password
-    }
-
     /// Creates an archive using the supplied closure.
     ///
     /// The archive becomes visible at its destination after writing and finalization succeed.
@@ -43,7 +39,7 @@ public final class SecureZIPWriter {
         at url: URL,
         password: String,
         overwrite: ZIPOverwrite = .fail,
-        body: (SecureZIPWriter) throws -> T,
+        body: (borrowing SecureZIPWriter) throws -> T,
     ) throws -> T {
         try withArchive(at: url, password: password, overwrite: overwrite, cancellation: nil, body: body)
     }
@@ -53,7 +49,7 @@ public final class SecureZIPWriter {
         password: String,
         overwrite: ZIPOverwrite,
         cancellation: ArchiveCancellation?,
-        body: (SecureZIPWriter) throws -> T,
+        body: (borrowing SecureZIPWriter) throws -> T,
     ) throws -> T {
         try withPassword(password) { _ in }
         return try ArchiveWriter.withArchive(at: url, overwrite: overwrite, cancellation: cancellation, securePassword: password) { core in
@@ -71,7 +67,7 @@ public final class SecureZIPWriter {
         at url: URL,
         password: String,
         overwrite: ZIPOverwrite = .fail,
-        body: @escaping @Sendable (SecureZIPWriter) throws -> T,
+        body: @escaping @Sendable (borrowing SecureZIPWriter) throws -> T,
     ) async throws -> T {
         try await ArchiveExecutor.shared.run { cancellation in
             try withArchive(at: url, password: password, overwrite: overwrite, cancellation: cancellation, body: body)

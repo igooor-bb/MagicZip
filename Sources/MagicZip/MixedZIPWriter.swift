@@ -3,64 +3,20 @@ import Foundation
 /// Creates ZIP archives with a separate password choice for each file.
 ///
 /// ZIP allows files with different passwords and unencrypted files in the same archive.
-/// Use this writer for that scenario, or ``ZIPWriter`` for one shared password.
+/// Use ``ZIPWriter/withMixedArchive(at:overwrite:body:)`` to start a session,
+/// or ``ZIPWriter/withMixedArchiveAsync(at:overwrite:body:)`` to wait asynchronously.
 /// Names and metadata remain visible. See <doc:PasswordsAndEncryption> for examples.
 ///
-/// Use the writer only inside its archive closure. Calls must not overlap or call back into
-/// this writer. Any failed addition invalidates the session, even if the closure catches the error.
+/// The archive closure borrows the writer, so it cannot be stored or returned.
+/// Calls must not overlap or call back into this writer. Any failed addition invalidates the session, even if the closure catches the
+/// error.
 ///
 /// See <doc:StreamingAndOwnership> for session behavior and <doc:SafetyAndLimits> for path,
 /// resource and overwrite rules.
-public final class MixedZIPWriter {
+public struct MixedZIPWriter: ~Copyable {
     private let core: ArchiveWriter
-    private init(core: ArchiveWriter) {
+    init(core: ArchiveWriter) {
         self.core = core
-    }
-
-    /// Creates an archive using the supplied closure.
-    ///
-    /// The archive becomes visible at its destination after writing and finalization succeed.
-    /// If an error occurs before publication, an existing destination is preserved. Cleanup errors
-    /// can still be reported after the new archive is visible.
-    ///
-    /// - Parameters:
-    ///   - url: The archive destination. Its parent must exist and its path must not contain symlinks.
-    ///   - overwrite: How to handle an existing destination.
-    ///   - body: The work to perform with this writer. Use the writer only inside this closure.
-    /// - Returns: The value returned by `body`.
-    /// - Throws: ``ZIPError`` if creation fails. Errors thrown by `body` are preserved,
-    ///   including any additional cleanup error.
-    ///
-    /// See <doc:PasswordsAndEncryption> for password requirements.
-    public static func withArchive<T>(at url: URL, overwrite: ZIPOverwrite = .fail, body: (MixedZIPWriter) throws -> T) throws -> T {
-        try withArchive(at: url, overwrite: overwrite, cancellation: nil, body: body)
-    }
-
-    static func withArchive<T>(
-        at url: URL,
-        overwrite: ZIPOverwrite,
-        cancellation: ArchiveCancellation?,
-        body: (MixedZIPWriter) throws -> T,
-    ) throws -> T {
-        try ArchiveWriter.withArchive(at: url, overwrite: overwrite, cancellation: cancellation) { core in
-            try body(MixedZIPWriter(core: core))
-        }
-    }
-
-    /// Creates an archive on a background queue while the calling task waits asynchronously.
-    ///
-    /// The closure uses the same API as `withArchive` and runs synchronously. Return `Sendable`
-    /// results such as metadata or data, and use the writer only inside the closure.
-    /// Cancellation does not interrupt an active callback. The await completes after finalization
-    /// and cleanup. See <doc:StreamingAndOwnership> for cancellation behavior.
-    public static func withArchiveAsync<T: Sendable>(
-        at url: URL,
-        overwrite: ZIPOverwrite = .fail,
-        body: @escaping @Sendable (MixedZIPWriter) throws -> T,
-    ) async throws -> T {
-        try await ArchiveExecutor.shared.run { cancellation in
-            try withArchive(at: url, overwrite: overwrite, cancellation: cancellation, body: body)
-        }
     }
 
     /// Adds in-memory data as a file in the archive.

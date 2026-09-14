@@ -4,20 +4,18 @@ import Foundation
 ///
 /// Set a password when opening the archive to encrypt every file. Omit it to create an
 /// unencrypted archive. ZIP file encryption leaves names and metadata visible.
+/// Use ``withMixedArchive(at:overwrite:body:)`` to choose a password for each file.
 /// See <doc:PasswordsAndEncryption> for password requirements and other encryption modes.
 ///
-/// Use the writer only inside its archive closure. Calls must not overlap or call back into
-/// this writer. Any failed addition invalidates the session, even if the closure catches the error.
+/// The archive closure borrows the writer, so it cannot be stored or returned.
+/// Calls must not overlap or call back into this writer. Any failed addition invalidates the session, even if the closure catches the
+/// error.
 ///
 /// See <doc:StreamingAndOwnership> for session behavior and <doc:SafetyAndLimits> for path,
 /// resource and overwrite rules.
-public final class ZIPWriter {
+public struct ZIPWriter: ~Copyable {
     private let core: ArchiveWriter
     private let password: String?
-    private init(core: ArchiveWriter, password: String?) {
-        self.core = core
-        self.password = password
-    }
 
     /// Creates an archive using the supplied closure.
     ///
@@ -39,7 +37,7 @@ public final class ZIPWriter {
         at url: URL,
         password: String? = nil,
         overwrite: ZIPOverwrite = .fail,
-        body: (ZIPWriter) throws -> T,
+        body: (borrowing ZIPWriter) throws -> T,
     ) throws -> T {
         try withArchive(at: url, password: password, overwrite: overwrite, cancellation: nil, body: body)
     }
@@ -49,7 +47,7 @@ public final class ZIPWriter {
         password: String? = nil,
         overwrite: ZIPOverwrite,
         cancellation: ArchiveCancellation?,
-        body: (ZIPWriter) throws -> T,
+        body: (borrowing ZIPWriter) throws -> T,
     ) throws -> T {
         try withPassword(password) { _ in }
         return try ArchiveWriter.withArchive(at: url, overwrite: overwrite, cancellation: cancellation) { core in
@@ -67,10 +65,60 @@ public final class ZIPWriter {
         at url: URL,
         password: String? = nil,
         overwrite: ZIPOverwrite = .fail,
-        body: @escaping @Sendable (ZIPWriter) throws -> T,
+        body: @escaping @Sendable (borrowing ZIPWriter) throws -> T,
     ) async throws -> T {
         try await ArchiveExecutor.shared.run { cancellation in
             try withArchive(at: url, password: password, overwrite: overwrite, cancellation: cancellation, body: body)
+        }
+    }
+
+    /// Creates an archive with a separate password choice for each file.
+    ///
+    /// The archive becomes visible at its destination after writing and finalization succeed.
+    /// If an error occurs before publication, an existing destination is preserved. Cleanup errors
+    /// can still be reported after the new archive is visible.
+    ///
+    /// - Parameters:
+    ///   - url: The archive destination. Its parent must exist and its path must not contain symlinks.
+    ///   - overwrite: How to handle an existing destination.
+    ///   - body: The work to perform with this writer. Use the writer only inside this closure.
+    /// - Returns: The value returned by `body`.
+    /// - Throws: ``ZIPError`` if creation fails. Errors thrown by `body` are preserved,
+    ///   including any additional cleanup error.
+    ///
+    /// See <doc:PasswordsAndEncryption> for password requirements.
+    public static func withMixedArchive<T>(
+        at url: URL,
+        overwrite: ZIPOverwrite = .fail,
+        body: (borrowing MixedZIPWriter) throws -> T,
+    ) throws -> T {
+        try withMixedArchive(at: url, overwrite: overwrite, cancellation: nil, body: body)
+    }
+
+    static func withMixedArchive<T>(
+        at url: URL,
+        overwrite: ZIPOverwrite,
+        cancellation: ArchiveCancellation?,
+        body: (borrowing MixedZIPWriter) throws -> T,
+    ) throws -> T {
+        try ArchiveWriter.withArchive(at: url, overwrite: overwrite, cancellation: cancellation) { core in
+            try body(MixedZIPWriter(core: core))
+        }
+    }
+
+    /// Creates an archive with per-file passwords on a background queue.
+    ///
+    /// The closure uses the same API as `withMixedArchive` and runs synchronously. Return `Sendable`
+    /// results such as metadata or data, and use the writer only inside the closure.
+    /// Cancellation does not interrupt an active callback. The await completes after finalization
+    /// and cleanup. See <doc:StreamingAndOwnership> for cancellation behavior.
+    public static func withMixedArchiveAsync<T: Sendable>(
+        at url: URL,
+        overwrite: ZIPOverwrite = .fail,
+        body: @escaping @Sendable (borrowing MixedZIPWriter) throws -> T,
+    ) async throws -> T {
+        try await ArchiveExecutor.shared.run { cancellation in
+            try withMixedArchive(at: url, overwrite: overwrite, cancellation: cancellation, body: body)
         }
     }
 

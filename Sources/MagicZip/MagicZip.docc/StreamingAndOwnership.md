@@ -6,7 +6,17 @@ Process large files in chunks and keep archive sessions within their scope.
 
 ``ZIPReader/withArchive(at:limits:body:)`` and ``ZIPWriter/withArchive(at:password:overwrite:body:)`` open an archive, run a synchronous throwing closure, and close the archive before returning. Writers publish the finished archive only after finalization succeeds.
 
-Use the reader or writer only inside its closure. Sessions are not `Sendable`. Concurrent calls and reentry from a callback are rejected. Use separate sessions for parallel operations. Copied ``ZIPEntry`` values remain valid after the session closes.
+Reader and writer sessions are noncopyable (`~Copyable`), and the closure borrows them. You cannot store a session outside the closure, return it, or capture it in an escaping closure. Return `Data` or ``ZIPEntry`` values to use the results afterward.
+
+When passing a session to a helper, declare its parameter as `borrowing`:
+
+```swift
+func readManifest(from reader: borrowing ZIPReader) throws -> Data {
+    try reader.data(path: "manifest.json")
+}
+```
+
+Sessions are not `Sendable`. Concurrent calls and reentry from a callback are rejected. Use separate sessions for parallel operations.
 
 ## Async/await
 

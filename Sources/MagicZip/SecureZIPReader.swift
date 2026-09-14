@@ -3,21 +3,17 @@ import Foundation
 /// Reads archives whose file contents and catalog are encrypted.
 ///
 /// The password unlocks and verifies the catalog before your archive closure runs.
-/// File contents are verified when read. Use the reader only inside its closure, and use
-/// separate sessions for parallel reads. Calls must not overlap or call back into this reader.
+/// File contents are verified when read. The closure borrows the reader, so it cannot be
+/// stored or returned. Use separate sessions for parallel reads. Calls must not overlap
+/// or call back into this reader.
 ///
 /// - Important: This reader accepts minizip-ng CDCD archives, including those created by
 ///   ``SecureZIPWriter``. Use ``ZIPReader`` for ordinary ZIP archives.
 ///
 /// See <doc:PasswordsAndEncryption> for compatibility and catalog limits.
-public final class SecureZIPReader {
-    private let core: ZIPReader
+public struct SecureZIPReader: ~Copyable {
+    private let core: ArchiveReader
     private let password: String
-
-    private init(core: ZIPReader, password: String) {
-        self.core = core
-        self.password = password
-    }
 
     /// The entries from the verified archive catalog.
     ///
@@ -42,7 +38,7 @@ public final class SecureZIPReader {
         at url: URL,
         password: String,
         limits: ZIPLimits = ZIPLimits(),
-        body: (SecureZIPReader) throws -> T,
+        body: (borrowing SecureZIPReader) throws -> T,
     ) throws -> T {
         try withArchive(at: url, password: password, limits: limits, cancellation: nil, body: body)
     }
@@ -52,10 +48,10 @@ public final class SecureZIPReader {
         password: String,
         limits: ZIPLimits,
         cancellation: ArchiveCancellation?,
-        body: (SecureZIPReader) throws -> T,
+        body: (borrowing SecureZIPReader) throws -> T,
     ) throws -> T {
         try withPassword(password) { _ in }
-        return try ZIPReader.withArchive(at: url, limits: limits, cancellation: cancellation, securePassword: password) { core in
+        return try ArchiveReader.withArchive(at: url, limits: limits, cancellation: cancellation, securePassword: password) { core in
             try body(SecureZIPReader(core: core, password: password))
         }
     }
@@ -70,7 +66,7 @@ public final class SecureZIPReader {
         at url: URL,
         password: String,
         limits: ZIPLimits = ZIPLimits(),
-        body: @escaping @Sendable (SecureZIPReader) throws -> T,
+        body: @escaping @Sendable (borrowing SecureZIPReader) throws -> T,
     ) async throws -> T {
         try await ArchiveExecutor.shared.run { cancellation in
             try withArchive(at: url, password: password, limits: limits, cancellation: cancellation, body: body)

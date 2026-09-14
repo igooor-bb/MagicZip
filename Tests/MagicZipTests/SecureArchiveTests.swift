@@ -8,14 +8,11 @@ struct SecureArchiveTests {
         try temporaryDirectory { root in
             let archive = root.appendingPathComponent("secure.zip")
             let name = "private-уникальное/report-confidential.txt"
-            var escaped: SecureZIPWriter?
             try SecureZIPWriter.withArchive(at: archive, password: "secret") { writer in
-                escaped = writer
                 try writer.add(data: Data("private payload".utf8), path: name, compression: compression)
                 try writer.add(data: Data(), path: "empty-secret", compression: compression)
                 try writer.addDirectory(path: "hidden-directory")
             }
-            #expect(throws: ZIPError.self) { try escaped?.addDirectory(path: "closed") }
             let raw = try Data(contentsOf: archive)
             for value in [name, "private payload", "empty-secret", "hidden-directory"] {
                 #expect(raw.range(of: Data(value.utf8)) == nil)
@@ -26,9 +23,7 @@ struct SecureArchiveTests {
             #expect(throws: ZIPError.self) {
                 try SecureZIPReader.withArchive(at: archive, password: "wrong") { _ in Issue.record("Unauthenticated body ran") }
             }
-            var escapedReader: SecureZIPReader?
             try SecureZIPReader.withArchive(at: archive, password: "secret") { reader in
-                escapedReader = reader
                 #expect(reader.entries.count == 3)
                 #expect(try reader.data(path: name) == Data("private payload".utf8))
                 #expect(try reader.data(path: "empty-secret").isEmpty)
@@ -36,7 +31,6 @@ struct SecureArchiveTests {
                 #expect(try Data(contentsOf: root.appendingPathComponent("out").appendingPathComponent(name)) ==
                     Data("private payload".utf8))
             }
-            #expect(throws: ZIPError.self) { try escapedReader?.data(path: name) }
         }
     }
 

@@ -39,7 +39,8 @@ struct ArchiveTests {
             let matches4 = try reader.data(path: "empty").isEmpty
             #expect(matches4)
             #expect(reader.entry(at: "HELLO.TXT") == nil)
-            return try #require(reader.entry(at: "hello.txt"))
+            let entry = reader.entry(at: "hello.txt")
+            return try #require(entry)
         }
         #expect(snapshot.path == "hello.txt")
         #expect(snapshot.uncompressedSize == 20)
@@ -96,21 +97,16 @@ struct ArchiveTests {
         #expect(throws: (any Error).self) { try ZIPReader.withArchive(at: fixture(name)) { _ in } }
     }
 
-    @Test func `writer round trip and lifetime`() throws {
+    @Test func `mixed writer round trip`() throws {
         try temporaryDirectory { root in
             let archive = root.appendingPathComponent("test.zip")
-            var escaped: MixedZIPWriter?
-            try MixedZIPWriter.withArchive(at: archive) { writer in
-                escaped = writer
+            try ZIPWriter.withMixedArchive(at: archive) { writer in
                 try writer.add(data: Data("hello".utf8), path: "hello", compression: .store, password: nil)
                 try writer.add(data: Data(repeating: 42, count: 1000), path: "secret", password: "пароль")
                 try writer.add(data: Data(), path: "empty", password: "пароль")
                 try writer.addDirectory(path: "directory")
             }
-            #expect(throws: ZIPError.self) { try escaped?.addDirectory(path: "closed") }
-            var escapedReader: ZIPReader?
             try ZIPReader.withArchive(at: archive) { reader in
-                escapedReader = reader
                 #expect(reader.entries.count == 4)
                 let matches9 = try reader.data(path: "hello") == Data("hello".utf8)
                 #expect(matches9)
@@ -121,7 +117,6 @@ struct ArchiveTests {
                 let matches12 = try reader.data(path: "directory/").isEmpty
                 #expect(matches12)
             }
-            #expect(throws: ZIPError.self) { try escapedReader?.read(path: "hello") { _ in } }
         }
     }
 

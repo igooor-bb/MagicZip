@@ -27,7 +27,7 @@ public extension ZIPReader {
     static func withArchiveAsync<T: Sendable>(
         at url: URL,
         limits: ZIPLimits = ZIPLimits(),
-        body: @escaping @Sendable (ZIPReader) throws -> T,
+        body: @escaping @Sendable (borrowing ZIPReader) throws -> T,
     ) async throws -> T {
         try await ArchiveExecutor.shared.run { cancellation in
             try withArchive(at: url, limits: limits, cancellation: cancellation, body: body)

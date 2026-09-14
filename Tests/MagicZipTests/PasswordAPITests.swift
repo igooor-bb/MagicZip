@@ -30,7 +30,7 @@ struct PasswordAPITests {
     @Test func `mixed resolver only sees selected encrypted entries and failures preserve destination`() throws {
         try temporaryDirectory { root in
             let archive = root.appendingPathComponent("mixed.zip")
-            try MixedZIPWriter.withArchive(at: archive) { writer in
+            try ZIPWriter.withMixedArchive(at: archive) { writer in
                 try writer.add(data: Data([0]), path: "public", password: nil)
                 try writer.add(data: Data([1]), path: "one", password: "first")
                 try writer.add(data: Data([2]), path: "two", password: "second")

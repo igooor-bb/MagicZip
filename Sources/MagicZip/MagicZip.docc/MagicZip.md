@@ -2,12 +2,16 @@
 
 Read, create and selectively extract ZIP archives in Swift.
 
+<!-- rumdl-disable MD013 -->
+
 @Metadata {
     @Available(iOS, introduced: "16.0")
     @Available(macOS, introduced: "13.0")
     @Available(Swift, introduced: "6.2")
     @Available(Xcode, introduced: "26.0")
 }
+
+<!-- rumdl-enable MD013 -->
 
 ## Overview
 
@@ -70,6 +74,7 @@ Use a parent directory that already exists. File URLs must contain no symlink co
 
 - ``ZIPReader/withArchiveAsync(at:limits:body:)``
 - ``ZIPWriter/withArchiveAsync(at:password:overwrite:body:)``
+- ``ZIPWriter/withMixedArchiveAsync(at:overwrite:body:)``
 
 ### Failure handling and ownership
 

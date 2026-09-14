@@ -81,7 +81,7 @@ struct ReliabilityTests {
         var closed = 0
         let token = ArchiveCancellation()
         do {
-            _ = try ZIPReader(
+            _ = try ArchiveReader(
                 at: fixture("python.zip"),
                 limits: ZIPLimits(maximumEntries: cancel ? 100_000 : 0),
                 cancellation: token,

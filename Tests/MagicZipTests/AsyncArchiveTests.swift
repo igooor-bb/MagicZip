@@ -4,6 +4,29 @@ import Testing
 @testable import MagicZip
 
 struct AsyncArchiveTests {
+    @MainActor @Test func `async mixed archives preserve per-file passwords and return values`() async throws {
+        try await withAsyncDirectory { root in
+            let archive = root.appendingPathComponent("mixed.zip")
+            let result = try await ZIPWriter.withMixedArchiveAsync(at: archive) { writer in
+                #expect(!Thread.isMainThread)
+                try writer.add(data: Data([0]), path: "public", password: nil)
+                try writer.add(data: Data([1]), path: "one", password: "first")
+                try writer.add(data: Data([2]), path: "two", password: "second")
+                return "created"
+            }
+            #expect(result == "created")
+            try ZIPReader.withArchive(at: archive) { reader in
+                let publicData = try reader.data(path: "public")
+                let firstData = try reader.data(path: "one", password: "first")
+                let secondData = try reader.data(path: "two", password: "second")
+                #expect(publicData == Data([0]))
+                #expect(firstData == Data([1]))
+                #expect(secondData == Data([2]))
+                #expect(throws: ZIPError.self) { try reader.data(path: "two", password: "first") }
+            }
+        }
+    }
+
     @MainActor @Test func `async scopes leave the main thread and return owned values`() async throws {
         try await withAsyncDirectory { root in
             let archive = root.appendingPathComponent("archive.zip")

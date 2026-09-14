@@ -20,12 +20,12 @@ By design, ZIP's per-file encryption protects file contents, leaving names and o
 
 ## Different passwords per entry
 
-ZIP allows each file to use a different password, and encrypted and unencrypted files can coexist in one archive ([WinZip AES specification](https://www.winzip.com/en/support/aes-encryption/)). ``MixedZIPWriter`` supports this less common scenario. Use ``ZIPWriter`` when one password applies to all files.
+ZIP allows each file to use a different password, and encrypted and unencrypted files can coexist in one archive ([WinZip AES specification](https://www.winzip.com/en/support/aes-encryption/)). Use ``ZIPWriter/withMixedArchive(at:overwrite:body:)`` for this less common scenario. Its closure receives a ``MixedZIPWriter``. Use ``ZIPWriter`` when one password applies to all files.
 
 ``MixedZIPWriter`` requires an explicit `password:` on every file, tree or stream addition. Pass `nil` to leave those files unencrypted.
 
 ```swift
-try MixedZIPWriter.withArchive(at: archiveURL) { writer in
+try ZIPWriter.withMixedArchive(at: archiveURL) { writer in
     try writer.add(data: first, path: "first.txt", password: "first-password")
     try writer.add(data: second, path: "second.txt", password: "second-password")
     try writer.add(data: readme, path: "README.txt", password: nil)

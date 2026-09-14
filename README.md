@@ -75,7 +75,7 @@ let entries = try await ZIPReader.withArchiveAsync(at: archiveURL) { reader in
 }
 ```
 
-All reader and writer types provide `withArchiveAsync`. The closure runs synchronously on a background queue. Use the reader or writer only inside that closure. To use results afterward, return values such as `Data` or `[ZIPEntry]`, which conform to `Sendable`.
+Use `withArchiveAsync` for reading and writing, or `ZIPWriter.withMixedArchiveAsync` for per-file passwords. The closure runs synchronously on a background queue. The closure borrows a noncopyable reader or writer, so the session cannot be stored or returned. To use results afterward, return values such as `Data` or `[ZIPEntry]`, which conform to `Sendable`.
 
 Cancelling the task requests a stop, but does not interrupt an active file operation or your callback. MagicZip checks for cancellation between processing steps. The `await` finishes only after the archive is closed and cleanup is complete.
 
