@@ -126,6 +126,17 @@ public enum ZIPEncryption: Sendable, Equatable {
     /// An unencrypted entry.
     case none
 
+    /// Legacy ZipCrypto encryption, supported for reading existing archives only.
+    ///
+    /// ZipCrypto does not provide modern cryptographic protection. New encrypted archives use AES-256.
+    case zipCrypto
+
+    /// AES-128 encryption, supported for reading WinZIP AE-1 and AE-2 entries.
+    case aes128
+
+    /// AES-192 encryption, supported for reading WinZIP AE-1 and AE-2 entries.
+    case aes192
+
     /// The entry uses AES-256 encryption.
     ///
     /// MagicZip reads WinZIP AE-1 and AE-2 entries and writes AE-2 entries.

@@ -4,6 +4,7 @@
 #define HAVE_ZLIB 1
 #define ZLIB_COMPAT 1
 #define HAVE_WZAES 1
+#define HAVE_PKCRYPT 1
 #define MZ_ZIP_NO_CRYPTO_SIGNING 1
 #define MZ_TARGET_APPSTORE 1
 #define HAVE_DIRENT_H 1

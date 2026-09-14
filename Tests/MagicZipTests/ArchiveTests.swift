@@ -84,6 +84,51 @@ struct ArchiveTests {
         }
     }
 
+    @Test(arguments: [
+        "aes128-ae1-store",
+        "aes128-ae1-deflate",
+        "aes128-ae2-store",
+        "aes128-ae2-deflate",
+        "aes192-ae1-store",
+        "aes192-ae1-deflate",
+        "aes192-ae2-store",
+        "aes192-ae2-deflate",
+        "zipcrypto-store",
+        "zipcrypto-deflate",
+    ])
+    func `reads legacy and lower strength encryption`(name: String) throws {
+        try temporaryDirectory { root in
+            try ZIPReader.withArchive(at: fixture(name + ".zip")) { reader in
+                let encryption: ZIPEncryption = name.hasPrefix("aes128") ? .aes128 : name.hasPrefix("aes192") ? .aes192 : .zipCrypto
+                #expect(reader.entries.allSatisfy { $0.encryption == encryption })
+                let expected = Data(String(repeating: "independent encryption fixture ", count: 4).utf8)
+                #expect(try reader.data(path: "secret.txt", password: "fixture-password") == expected)
+                let empty = try reader.data(path: "empty", password: "fixture-password")
+                #expect(empty.isEmpty)
+                #expect(throws: ZIPError.self) { try reader.data(path: "secret.txt", password: "wrong") }
+                #expect(throws: ZIPError.self) { try reader.data(path: "secret.txt") }
+                let failed = root.appendingPathComponent("failed")
+                #expect(throws: ZIPError.self) { try reader.extract(to: failed, password: "wrong") }
+                #expect(!FileManager.default.fileExists(atPath: failed.path))
+                let output = root.appendingPathComponent("output")
+                try reader.extract(to: output) { _ in "fixture-password" }
+                #expect(try Data(contentsOf: output.appendingPathComponent("secret.txt")) == expected)
+            }
+        }
+    }
+
+    @Test(arguments: ["aes128-corrupt.zip", "aes192-corrupt.zip", "zipcrypto-corrupt.zip"])
+    func `corrupt compatibility archives are not published`(name: String) throws {
+        try temporaryDirectory { root in
+            try ZIPReader.withArchive(at: fixture(name)) { reader in
+                #expect(throws: ZIPError.self) { try reader.data(path: "secret.txt", password: "fixture-password") }
+                let output = root.appendingPathComponent("output")
+                #expect(throws: ZIPError.self) { try reader.extract(to: output, password: "fixture-password") }
+                #expect(!FileManager.default.fileExists(atPath: output.path))
+            }
+        }
+    }
+
     @Test func `corruption and selective read`() throws {
         try ZIPReader.withArchive(at: fixture("selective-corrupt.zip")) { reader in
             let matches7 = try reader.data(path: "good") == Data("selected".utf8)

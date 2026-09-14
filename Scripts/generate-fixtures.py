@@ -75,3 +75,5 @@ import runpy
 runpy.run_path(str(Path(__file__).with_name("generate-regression-fixtures.py")))
 
 runpy.run_path(str(Path(__file__).with_name("generate-secure-fixtures.py")))
+
+runpy.run_path(str(Path(__file__).with_name("generate-encryption-fixtures.py")))

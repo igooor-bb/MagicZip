@@ -4,6 +4,16 @@
   "aes-store1.zip": "d6bc4a40c27a4c49ae60b8160d681b8409cd51450caa926f78db51009cef8aa7",
   "aes-store2.zip": "84903fc10d28b8b26d7b912a0c546d898885100a197c577a8981163461c20fce",
   "aes1.zip": "29f152c0c4c059b903a45abb152a60551a4b8cf87b3db7ba008fc0c536d8c591",
+  "aes128-ae1-deflate.zip": "65327ae383fa82a409afb0f24d73f1bfd3a68c7bf1c66a70b1dcae8a3c93b845",
+  "aes128-ae1-store.zip": "091afe8c4671b4fdf7a6ce538f385868d3b5725d8b547faf5a8e5ff7192b6fcb",
+  "aes128-ae2-deflate.zip": "53e6e7e83a182321dd85a68f0ef96d39563855c81457555357a1d62fc91b0fa1",
+  "aes128-ae2-store.zip": "efd55d9e734d85868beac7bb63d04ec977bac7057bfd41405f0b91cc16062c63",
+  "aes128-corrupt.zip": "468301491564b0898e2085b6da2081d16b5ac36265c74eb524ff53378e7eceb8",
+  "aes192-ae1-deflate.zip": "99cc37ff229686f13616de6b673032918b4d1b84779385655e8533396a85f365",
+  "aes192-ae1-store.zip": "63aea3cd7105ffe58514e50958e640f87ab543728497886d2c19d04abdcbae4e",
+  "aes192-ae2-deflate.zip": "e6a35e88eb332c92f2b26be5fffdc3707bab1a8472705862cdf3efe3af2a3eef",
+  "aes192-ae2-store.zip": "71b78df198451ba487578c861098e1ffa54fe4c9bd0175aac21f01f57ecb6d64",
+  "aes192-corrupt.zip": "9b06ee6e635b3ef56be75d37bb29c75713aa1d71a404f62de21d56e9c5fc11af",
   "aes2.zip": "5cbec925f21ce183e9b71e9e30b311959ba3dc67abdf6486bd7eb0ac7430bfd3",
   "case-alias.zip": "dacc051df380d2444d97bfd7ce39e91e3c3fe8d5f5b624e222b32a51fbec9bf8",
   "deep-corrupt.zip": "5a01ba3869567ff6becb08d9e4354dddc4f7ef4bd0173394f9698e601e2dd8b3",
@@ -32,5 +42,8 @@
   "truncated.zip": "dbdc702e6b2d10e1fa6747e7981884f91cecc5b6aa3f11e1d293c223f0b4c1d4",
   "unicode-alias.zip": "172a5e092c8d234d59043e4b0361390f4fe57bc6c6730450673199611b8ca7c5",
   "unsupported.zip": "4e2f85139a6d78858e8dd09c93c4c9500e4b9bc300132eab956f05a822a30e59",
-  "windows.zip": "862e1318800aedf2090c24dc0f697c89ba1e58776c11d6fc565ec5bd542f0dc1"
+  "windows.zip": "862e1318800aedf2090c24dc0f697c89ba1e58776c11d6fc565ec5bd542f0dc1",
+  "zipcrypto-corrupt.zip": "83eefc747b0894f114eaad25950cd2fde1a6bc4fd69e9e27cbfeb74d1920d4b5",
+  "zipcrypto-deflate.zip": "caa3d2a8aa577b09f953960112d6a209502edef335e0716753c409bfe3d66791",
+  "zipcrypto-store.zip": "9c5a9f9ca5eea86088b3268a1cee071c94e63f1c77cfa019cc0d2b3bd1b10b04"
 }

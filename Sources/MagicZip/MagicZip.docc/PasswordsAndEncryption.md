@@ -2,6 +2,8 @@
 
 Encrypt file contents with one password, use per-entry passwords, or protect the catalog too.
 
+MagicZip reads ZipCrypto and WinZIP AES-128/192/256 archives. New encrypted archives always use AES-256. ZipCrypto reading is provided for compatibility with older archives and does not provide modern cryptographic protection. Secure archives continue to require AES-256 for both the catalog and files.
+
 ## One password per archive
 
 Pass `password:` to ``ZIPWriter`` to encrypt all regular files, including files added from directories and streams. Omit it or pass `nil` to write files without encryption. This applies equally to text and binary files. Explicit directory entries remain unencrypted. Passwords must contain 1...128 UTF-8 bytes without NUL.

@@ -23,12 +23,12 @@ VENDOR = ROOT / "Sources/CMinizip/vendor"
 UPSTREAM = "https://github.com/zlib-ng/minizip-ng"
 SOURCES = (
     "mz_crypt.c", "mz_crypt_apple.c", "mz_os.c", "mz_os_posix.c",
-    "mz_strm.c", "mz_strm_mem.c", "mz_strm_os_posix.c", "mz_strm_wzaes.c",
+    "mz_strm.c", "mz_strm_mem.c", "mz_strm_os_posix.c", "mz_strm_pkcrypt.c", "mz_strm_wzaes.c",
     "mz_strm_zlib.c", "mz_zip.c",
 )
 HEADERS = (
     "mz.h", "mz_crypt.h", "mz_os.h", "mz_strm.h", "mz_strm_mem.h",
-    "mz_strm_os.h", "mz_strm_wzaes.h", "mz_strm_zlib.h", "mz_zip.h",
+    "mz_strm_os.h", "mz_strm_pkcrypt.h", "mz_strm_wzaes.h", "mz_strm_zlib.h", "mz_zip.h",
 )
 
 

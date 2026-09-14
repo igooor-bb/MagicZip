@@ -41,9 +41,10 @@ Reader limits apply to advertised and actual output. These are application budge
 ## Format support
 
 - Store and Deflate (levels 1...9 for writing).
-- Plaintext and WinZIP AES-256: AE-1/AE-2 reading and AE-2 writing.
+- Reading: plaintext, ZipCrypto, and WinZIP AES-128/192/256 (AE-1/AE-2).
+- Writing: plaintext or WinZIP AES-256 (AE-2).
 - UTF-8 names, ASCII without the UTF-8 flag, empty files/directories and ZIP64.
 
-Unsupported compression and encryption can be listed, but fail when selected for reading. Legacy filename encodings, ZipCrypto, AES-128/192, split archives and archive append/in-place modification are unsupported.
+Unsupported compression and encryption can be listed, but fail when selected for reading. Legacy filename encodings, split archives and archive append/in-place modification are unsupported.
 
 CRC, size and AES authentication checks must pass before a read succeeds. Ordinary ZIP AES does not authenticate the catalog or hide names and timestamps. See <doc:PasswordsAndEncryption> for password handling and encrypted catalogs. Passwords are omitted from library-generated diagnostics. Secure erasure of strings and callback data is not guaranteed.

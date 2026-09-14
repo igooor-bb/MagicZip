@@ -2,7 +2,7 @@
   "archive_sha256": "467a189e998c7754ada577758d29324d5b3c866a7fb5d43700b8c551d72ca998",
   "archive_url": "https://codeload.github.com/zlib-ng/minizip-ng/tar.gz/7b2387161c542fa9f427352dcdef76097d0d692b",
   "commit": "7b2387161c542fa9f427352dcdef76097d0d692b",
-  "configuration_sha256": "4bba4bde9891f892edc618d6c31f3ed5a91442a538e8d3a38ccd1643505c92fe",
+  "configuration_sha256": "c91dade0a3836b130228c6f6c240d1c911357e83e2da713816bb7096127d4397",
   "headers": [
     "mz.h",
     "mz_crypt.h",
@@ -10,6 +10,7 @@
     "mz_strm.h",
     "mz_strm_mem.h",
     "mz_strm_os.h",
+    "mz_strm_pkcrypt.h",
     "mz_strm_wzaes.h",
     "mz_strm_zlib.h",
     "mz_zip.h"
@@ -46,6 +47,7 @@
     "mz_strm.c",
     "mz_strm_mem.c",
     "mz_strm_os_posix.c",
+    "mz_strm_pkcrypt.c",
     "mz_strm_wzaes.c",
     "mz_strm_zlib.c",
     "mz_zip.c"

@@ -87,7 +87,8 @@ Cancelling the task requests a stop, but does not interrupt an active file opera
 - Existing destinations fail by default. Pass `overwrite: .replace` to replace a complete file or directory without merging directories. Failure before publication preserves the old destination. A cleanup error after publication can leave the new result visible.
 - Traversal paths, conflicting names, symlinks and special files are rejected. Extraction does not restore permissions or timestamps.
 - Reader defaults allow 100,000 entries, 1 GiB per entry and 4 GiB per selected operation, with additional path and expansion limits. Adjust `ZIPLimits` for your workload. `data` has a separate 16 MiB default cap.
-- ZipCrypto, AES-128/192, legacy filename encodings, split archives and archive append are unsupported.
+- ZipCrypto and AES-128/192 are supported only for reading existing archives. New encrypted archives always use AES-256.
+- Legacy filename encodings, split archives and archive append are unsupported.
 
 See [Safety and limits](Sources/MagicZip/MagicZip.docc/SafetyAndLimits.md) for the full contract and [Streaming and ownership](Sources/MagicZip/MagicZip.docc/StreamingAndOwnership.md) for streaming, cancellation and error handling. API reference documentation is available through Xcode's **Build Documentation** command.
 

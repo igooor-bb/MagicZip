@@ -208,15 +208,19 @@ int32_t magiczip_read_close(magiczip_archive *a, int verify) {
             err = mz_stream_get_prop_int64(compress, MZ_STREAM_PROP_TOTAL_IN, &consumed);
         }
         if (err == MZ_OK) {
-            /* AES-256: 16-byte salt + 2-byte verifier + 10-byte HMAC are included in ZIP
-             * compressed_size, but not in the codec input count. Swift admits only AES-256.
-             * https://www.winzip.com/en/support/aes-encryption/ (Encrypted file storage format) */
-            int64_t overhead = info->aes_version ? 28 : 0;
+            /* ZIP sizes include encryption framing, unlike codec input counts.
+             * WinZip AES uses an 8/12/16-byte salt, 2-byte verifier and 10-byte HMAC.
+             * ZipCrypto uses a 12-byte encryption header. */
+            int64_t overhead = 0;
+            if (info->flag & MZ_ZIP_FLAG_ENCRYPTED) {
+                overhead = info->aes_version ? 16 + 4 * info->aes_strength : MZ_PKCRYPT_HEADER_SIZE;
+            }
             if (info->compressed_size < overhead || consumed != info->compressed_size - overhead ||
                 a->read_size != info->uncompressed_size) {
                 err = MZ_DATA_ERROR;
             }
-            /* Version 0 is plaintext here; AE-1 requires CRC, while AE-2 stores zero and uses HMAC. */
+            /* Version 0 is plaintext or ZipCrypto; AE-1 requires CRC, while AE-2 stores zero and uses HMAC.
+             */
             if (err == MZ_OK && info->aes_version <= 1) {
                 uint32_t computed_crc = 0;
                 err = mz_zip_entry_get_computed_crc(a->zip, &computed_crc);

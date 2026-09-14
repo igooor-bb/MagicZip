@@ -240,7 +240,7 @@ final class ArchiveReader {
             throw ZIPError.unsupported(path: entry.path, feature: "Compression or encryption")
         }
 
-        if entry.encryption == .aes256, password == nil {
+        if entry.encryption != .none, password == nil {
             throw ZIPError.backend(operation: .openEncryptedEntry, path: entry.path, status: -108)
         }
 
@@ -369,12 +369,30 @@ final class ArchiveReader {
                 throw ZIPError.conflictingPath(path)
             }
 
-            // WinZip AES: general-purpose bit 0 = encrypted, vendor versions 1/2 = AE-1/AE-2,
-            // strength code 3 = AES-256 (not a byte count). Other encryption is unsupported.
-            // https://www.winzip.com/en/support/aes-encryption/ (AES extra data field)
-            let encrypted = info.flags & 1 != 0
-            let encryption: ZIPEncryption = encrypted
-                ? ([1, 2].contains(info.aes_version) && info.aes_strength == 3 ? .aes256 : .unsupported) : .none
+            // Strong PKWARE encryption is distinct from ZipCrypto and WinZip AES.
+            let encryption: ZIPEncryption = if info.flags & 1 == 0 {
+                .none
+            } else if info.flags & 0x40 != 0 {
+                .unsupported
+            } else if info.aes_version == 0, info.aes_strength == 0 {
+                .zipCrypto
+            } else if [1, 2].contains(info.aes_version) {
+                switch info.aes_strength {
+                case 1:
+                    .aes128
+
+                case 2:
+                    .aes192
+
+                case 3:
+                    .aes256
+
+                default:
+                    .unsupported
+                }
+            } else {
+                .unsupported
+            }
 
             entries.append(
                 ZIPEntry(
