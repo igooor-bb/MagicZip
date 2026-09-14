@@ -32,6 +32,8 @@ pod 'MagicZip', :path => '/path/to/MagicZip'
 pod 'MagicZipCMinizip', :path => '/path/to/MagicZip'
 ```
 
+For runnable examples, see [Examples](Examples/).
+
 ## Read and extract
 
 Browse entries, read a file, or extract a folder:
@@ -81,7 +83,7 @@ Cancelling the task requests a stop, but does not interrupt an active file opera
 
 ## Behavior and limits
 
-- Destination parents must already exist. File paths must contain no symlink components. Use actual paths such as `/private/tmp` instead of symlink aliases like `/tmp`.
+- Missing destination parents are created automatically and remain if the operation fails. Directory aliases such as `/tmp` and `/var` are supported.
 - Existing destinations fail by default. Pass `overwrite: .replace` to replace a complete file or directory without merging directories. Failure before publication preserves the old destination. A cleanup error after publication can leave the new result visible.
 - Traversal paths, conflicting names, symlinks and special files are rejected. Extraction does not restore permissions or timestamps.
 - Reader defaults allow 100,000 entries, 1 GiB per entry and 4 GiB per selected operation, with additional path and expansion limits. Adjust `ZIPLimits` for your workload. `data` has a separate 16 MiB default cap.

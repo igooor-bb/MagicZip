@@ -44,7 +44,7 @@ run = "./Scripts/benchmark.swift"
 
 [tasks.check]
 description = "Run the same checks locally and in CI"
-depends = ["format-check", "lint", "lint-markdown", "test"]
+depends = ["format-check", "lint", "lint-markdown", "test", "validate-examples"]
 
 [tasks.setup]
 description = "Install locked fixture and CocoaPods dependencies"
@@ -53,6 +53,15 @@ run = ["uv sync --locked --group fixtures", "gem install bundler --version 2.7.1
 [tasks."fixtures-python"]
 description = "Regenerate independent Python fixtures with locked dependencies"
 run = "uv run --locked --group fixtures python Scripts/generate-fixtures.py"
+
+[tasks."validate-examples"]
+description = "Build and run all examples against the local package"
+run = """
+swift build --package-path Examples
+swift run --skip-build --package-path Examples CreateAndExtract
+swift run --skip-build --package-path Examples PasswordProtectedArchive
+swift run --skip-build --package-path Examples SecureArchive
+"""
 
 [tasks."validate-apple"]
 description = "Build Apple platforms and DocC"

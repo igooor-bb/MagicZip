@@ -4,7 +4,7 @@ Choose resource limits and understand when output becomes visible.
 
 ## Filesystem behavior
 
-Destination parents must already exist. Source and destination paths must contain no symlink components, including system aliases such as `/tmp` and `/var`. Use the actual path, such as `/private/tmp`. Foundation's `resolvingSymlinksInPath()` may retain these aliases on macOS.
+Missing destination parents are created automatically and remain if the operation fails. Caller-supplied directories may use symlink aliases, including `/tmp` and `/var`. Symlinks within source trees, source files that are themselves symlinks, and symlinks at the destination itself are rejected.
 
 ``ZIPOverwrite/fail`` is the default. ``ZIPOverwrite/replace`` atomically replaces a complete file or directory of the same type. Directories are never merged. Output is staged privately beside the destination. Failure or cancellation before publication preserves the old destination and attempts to remove staging output. If cleanup fails after publication, the operation throws but the new result is already visible.
 

@@ -112,7 +112,7 @@ public struct ZIPReader: ~Copyable {
     /// publication, the method throws but the new result is already visible.
     ///
     /// - Parameters:
-    ///   - destination: The output folder. Its parent must exist and its path must not contain symlinks.
+    ///   - destination: The output folder. Missing parent directories are created. Parent directory aliases are supported.
     ///   - selection: The entries to extract. Defaults to all entries.
     ///   - password: A shared password for the selected encrypted files.
     ///   - overwrite: How to handle an existing destination. Defaults to failing if it exists.
@@ -141,7 +141,7 @@ public struct ZIPReader: ~Copyable {
     /// See <doc:PasswordsAndEncryption> for an example.
     ///
     /// - Parameters:
-    ///   - destination: The output folder. Its parent must exist and its path must not contain symlinks.
+    ///   - destination: The output folder. Missing parent directories are created. Parent directory aliases are supported.
     ///   - selection: The entries to extract. Defaults to all entries.
     ///   - overwrite: How to handle an existing destination.
     ///   - passwordProvider: Called once per selected encrypted entry, and never for unencrypted

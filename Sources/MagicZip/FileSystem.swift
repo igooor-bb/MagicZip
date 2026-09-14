@@ -107,7 +107,9 @@ struct FileIdentity: Equatable {
 }
 
 enum FileSystem {
-    static func openDirectory(_ url: URL) throws -> FileDescriptor {
+    /// Caller-supplied directory aliases are allowed. Subsequent operations use the opened
+    /// descriptor, while traversal inside source trees and staging directories rejects symlinks.
+    static func openDirectory(_ url: URL, createIntermediates: Bool = false) throws -> FileDescriptor {
         guard url.isFileURL, !url.path.utf8.contains(0) else {
             throw ZIPError.invalidArgument("Expected a local file URL")
         }
@@ -117,8 +119,19 @@ enum FileSystem {
                 throw ZIPError.unsafePath(url.path)
             }
             current = try current.withCheckedClose(operation: .closeDirectoryComponent, path: String(component)) {
-                try FileDescriptor(
-                    openat($0.raw, String(component), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC),
+                let name = String(component)
+                let descriptor = openat($0.raw, name, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+                if descriptor >= 0 || !createIntermediates || errno != ENOENT {
+                    return try FileDescriptor(descriptor, operation: .openDirectory, path: url.path)
+                }
+                try checkCancellation()
+                if mkdirat($0.raw, name, 0o700) != 0, errno != EEXIST {
+                    throw ZIPError.fileSystem(operation: .createDirectory, path: url.path, code: errno)
+                }
+                // A missing component may have been created concurrently. Accept a directory,
+                // but never follow a symlink substituted between the lookup and creation.
+                return try FileDescriptor(
+                    openat($0.raw, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC),
                     operation: .openDirectory,
                     path: url.path,
                 )
@@ -306,7 +319,7 @@ final class OutputTransaction {
             throw ZIPError.invalidArgument("Expected a destination file or directory URL")
         }
         destination = url.lastPathComponent
-        parent = try FileSystem.openDirectory(url.deletingLastPathComponent())
+        parent = try FileSystem.openDirectory(url.deletingLastPathComponent(), createIntermediates: true)
         // Owner-only staging: 0700 permits traversal; files use 0600 below (no execute bit).
         guard mkdirat(parent.raw, temporaryName, 0o700) == 0 else {
             throw ZIPError.fileSystem(operation: .createStagingDirectory, path: destination, code: errno)

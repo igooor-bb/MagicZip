@@ -26,7 +26,7 @@ public struct SecureZIPWriter: ~Copyable {
     /// can still be reported after the new archive is visible.
     ///
     /// - Parameters:
-    ///   - url: The archive destination. Its parent must exist and its path must not contain symlinks.
+    ///   - url: The archive destination. Missing parent directories are created. Parent directory aliases are supported.
     ///   - password: The password for all files and the catalog.
     ///   - overwrite: How to handle an existing destination.
     ///   - body: The work to perform with this writer. Use the writer only inside this closure.

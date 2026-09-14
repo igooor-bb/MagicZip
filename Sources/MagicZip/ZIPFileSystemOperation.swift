@@ -9,7 +9,7 @@ public enum ZIPFileSystemOperation: String, Sendable, CaseIterable {
     case inspectIdentity = "inspect identity"
     case openRoot = "open root"
     case closeDirectoryComponent = "close directory component"
-    case openDirectory = "open directory without following symlinks"
+    case openDirectory = "open directory"
     case closeSourceParent = "close source parent"
     case openFile = "open file"
     case closeRejectedSource = "close rejected source"

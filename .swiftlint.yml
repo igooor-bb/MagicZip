@@ -1,6 +1,7 @@
 included:
   - Sources/MagicZip
   - Tests
+  - Examples/Sources
   - Scripts
   - Benchmarks/Benchmarks
   - Validation/Compatibility/Sources

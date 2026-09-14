@@ -114,7 +114,7 @@ public struct SecureZIPReader: ~Copyable {
     /// Extracts files to a destination folder using the archive password.
     ///
     /// - Parameters:
-    ///   - destination: The output folder. Its parent must exist and its path must not contain symlinks.
+    ///   - destination: The output folder. Missing parent directories are created. Parent directory aliases are supported.
     ///   - selection: The entries to extract. Defaults to all entries.
     ///   - overwrite: How to handle an existing destination. Defaults to failing if it exists.
     /// - Throws: An extraction, verification or cancellation error.

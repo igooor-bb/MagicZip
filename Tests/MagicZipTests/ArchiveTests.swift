@@ -208,13 +208,94 @@ struct ArchiveTests {
             }
             let link = root.appendingPathComponent("link")
             try FileManager.default.createSymbolicLink(at: link, withDestinationURL: source)
-            #expect(throws: (any Error).self) {
-                try ZIPReader.withArchive(at: archive) { try $0.extract(to: link.appendingPathComponent("escaped")) }
-            }
+            try ZIPReader.withArchive(at: archive) { try $0.extract(to: link.appendingPathComponent("output")) }
+            #expect(try Data(contentsOf: source.appendingPathComponent("output/copy")) == Data("file".utf8))
             #expect(throws: (any Error).self) {
                 try ZIPReader.withArchive(at: archive) { try $0.extract(to: link, overwrite: .replace) }
             }
-            #expect(!FileManager.default.fileExists(atPath: source.appendingPathComponent("escaped").path))
+            try FileManager.default.createSymbolicLink(at: source.appendingPathComponent("nested-link"), withDestinationURL: root)
+            #expect(throws: (any Error).self) {
+                try ZIPWriter.withArchive(at: root.appendingPathComponent("rejected.zip")) {
+                    try $0.add(directory: source, path: "tree")
+                }
+            }
+        }
+    }
+
+    @Test func `directory aliases support archive IO and pin the output parent`() throws {
+        try temporaryDirectory { root in
+            let files = FileManager.default
+            let first = root.appendingPathComponent("first")
+            let second = root.appendingPathComponent("second")
+            try files.createDirectory(at: first, withIntermediateDirectories: false)
+            try files.createDirectory(at: second, withIntermediateDirectories: false)
+            let alias = root.appendingPathComponent("alias")
+            try files.createSymbolicLink(at: alias, withDestinationURL: first)
+            let source = first.appendingPathComponent("source")
+            try files.createDirectory(at: source, withIntermediateDirectories: false)
+            try Data("contents".utf8).write(to: source.appendingPathComponent("input.txt"))
+            let sourceAlias = root.appendingPathComponent("source-alias")
+            try files.createSymbolicLink(at: sourceAlias, withDestinationURL: source)
+            try ZIPWriter.withArchive(at: alias.appendingPathComponent("archive.zip")) { writer in
+                try writer.add(file: alias.appendingPathComponent("source/input.txt"), path: "file.txt")
+                try writer.add(directory: sourceAlias, path: "folder")
+                try files.removeItem(at: alias)
+                try files.createSymbolicLink(at: alias, withDestinationURL: second)
+            }
+            #expect(!files.fileExists(atPath: second.appendingPathComponent("archive.zip").path))
+            try files.removeItem(at: alias)
+            try files.createSymbolicLink(at: alias, withDestinationURL: first)
+            try ZIPReader.withArchive(at: alias.appendingPathComponent("archive.zip")) { reader in
+                #expect(try reader.data(path: "file.txt") == Data("contents".utf8))
+                try reader.extract(to: alias.appendingPathComponent("output"))
+            }
+            #expect(try Data(contentsOf: first.appendingPathComponent("output/folder/input.txt")) == Data("contents".utf8))
+        }
+    }
+
+    @Test func `missing destination parents are created through directory aliases`() throws {
+        try temporaryDirectory { root in
+            let alias = root.appendingPathComponent("alias")
+            try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: root)
+            let archive = alias.appendingPathComponent("archives/nested/example.zip")
+            let contents = Data("contents".utf8)
+            try ZIPWriter.withArchive(at: archive) { try $0.add(data: contents, path: "file.txt") }
+            let output = alias.appendingPathComponent("exports/nested/output")
+            try ZIPReader.withArchive(at: archive) { try $0.extract(to: output) }
+            #expect(try Data(contentsOf: root.appendingPathComponent("exports/nested/output/file.txt")) == contents)
+        }
+    }
+
+    @Test func `failed writes keep new parents but remove staging`() throws {
+        try temporaryDirectory { root in
+            let parent = root.appendingPathComponent("new/nested")
+            #expect(throws: CancellationError.self) {
+                try ZIPWriter.withArchive(at: parent.appendingPathComponent("failed.zip")) { _ in
+                    throw CancellationError()
+                }
+            }
+            let remaining = try FileManager.default.contentsOfDirectory(atPath: parent.path)
+            #expect(remaining.isEmpty)
+            let missing = root.appendingPathComponent("missing/input.zip")
+            #expect(throws: ZIPError.self) { try ZIPReader.withArchive(at: missing) { _ in } }
+            #expect(!FileManager.default.fileExists(atPath: missing.deletingLastPathComponent().path))
+        }
+    }
+
+    @Test func `destination parents reject files and dangling symlinks`() throws {
+        try temporaryDirectory { root in
+            let file = root.appendingPathComponent("file")
+            try Data("keep".utf8).write(to: file)
+            let link = root.appendingPathComponent("dangling")
+            let missing = root.appendingPathComponent("missing")
+            try FileManager.default.createSymbolicLink(at: link, withDestinationURL: missing)
+            for parent in [file, link] {
+                #expect(throws: ZIPError.self) {
+                    try ZIPWriter.withArchive(at: parent.appendingPathComponent("nested/archive.zip")) { _ in }
+                }
+            }
+            #expect(try Data(contentsOf: file) == Data("keep".utf8))
+            #expect(!FileManager.default.fileExists(atPath: missing.path))
         }
     }
 

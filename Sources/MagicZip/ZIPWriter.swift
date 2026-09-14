@@ -24,7 +24,7 @@ public struct ZIPWriter: ~Copyable {
     /// can still be reported after the new archive is visible.
     ///
     /// - Parameters:
-    ///   - url: The archive destination. Its parent must exist and its path must not contain symlinks.
+    ///   - url: The archive destination. Missing parent directories are created. Parent directory aliases are supported.
     ///   - password: The password for all files, or `nil` to leave them unencrypted.
     ///   - overwrite: How to handle an existing destination.
     ///   - body: The work to perform with this writer. Use the writer only inside this closure.
@@ -79,7 +79,7 @@ public struct ZIPWriter: ~Copyable {
     /// can still be reported after the new archive is visible.
     ///
     /// - Parameters:
-    ///   - url: The archive destination. Its parent must exist and its path must not contain symlinks.
+    ///   - url: The archive destination. Missing parent directories are created. Parent directory aliases are supported.
     ///   - overwrite: How to handle an existing destination.
     ///   - body: The work to perform with this writer. Use the writer only inside this closure.
     /// - Returns: The value returned by `body`.

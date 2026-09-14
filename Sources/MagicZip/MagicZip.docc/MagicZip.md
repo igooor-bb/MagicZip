@@ -42,7 +42,7 @@ func example(archive: URL, destination: URL) throws {
 }
 ```
 
-Use a parent directory that already exists. File URLs must contain no symlink components, including system aliases such as `/tmp` and `/var`. Supply the actual path (for example `/private/tmp`) when appropriate. Entry paths are always relative UTF-8 ZIP paths with `/` separators. Neither extraction nor archive creation follows symlinks.
+Missing destination parents are created automatically and remain if the operation fails. Directory aliases such as `/tmp` and `/var` are supported. Entry paths are relative UTF-8 ZIP paths with `/` separators. Symlinks inside source trees or archives are rejected.
 
 ## Topics
 
