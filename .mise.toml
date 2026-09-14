@@ -15,11 +15,11 @@ BUNDLE_FROZEN = "true"
 WIFT_CACHE_DIR = "{{config_root}}/.cache/wift"
 
 [tasks.format]
-description = "Format owned Swift sources"
+description = "Format Swift sources, Swift examples in Markdown and C sources"
 run = ["swiftformat .", "./Scripts/format-c.swift"]
 
 [tasks."format-check"]
-description = "Check Swift formatting"
+description = "Check Swift sources, Swift examples in Markdown and C formatting"
 run = ["swiftformat --lint .", "./Scripts/format-c.swift --check"]
 
 [tasks.lint]
@@ -31,7 +31,7 @@ description = "Lint Markdown documentation"
 run = "rumdl check ."
 
 [tasks."format-markdown"]
-description = "Format Markdown documentation"
+description = "Format Markdown layout"
 run = "rumdl fmt ."
 
 [tasks.test]
@@ -66,13 +66,13 @@ run = "./Scripts/validate-pods.swift"
 description = "Verify independent ZIP compatibility and C symbol isolation"
 run = "./Scripts/validate-compatibility.swift"
 
-[tasks."validate-memory"]
-description = "Measure peak RSS and selective extraction on a 512 MiB archive"
-run = "swift run -c release --package-path Validation/StreamingProbe"
+[tasks."test-memory"]
+description = "Check the RSS budget and selective extraction on a 512 MiB archive"
+run = "swift run -c release --package-path Tests/StreamingMemoryTests"
 
-[tasks."validate-trees"]
+[tasks."test-trees"]
 description = "Isolated deep/wide traversal and self-input regressions with 128 FDs"
-run = "./Scripts/validate-trees.swift"
+run = "./Scripts/test-trees.swift"
 
 [tasks."update-minizip"]
 description = "Import a reviewed minizip-ng tag or commit"

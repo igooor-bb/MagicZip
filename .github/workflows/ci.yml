@@ -25,4 +25,4 @@ jobs:
       - run: mise run setup
       - run: mise run validate-pods
       - run: mise run validate-compatibility
-      - run: mise run validate-memory
+      - run: mise run test-memory

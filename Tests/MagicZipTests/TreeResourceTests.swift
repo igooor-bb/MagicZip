@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import MagicZip
 
-/// Run only through validate-trees: resource limits belong to this isolated process.
+/// Run only through test-trees: resource limits belong to this isolated process.
 @Suite(.serialized, .enabled(if: ProcessInfo.processInfo.environment["MAGICZIP_TREE_PROBE"] == "1"))
 struct TreeResourceTests {
     init() throws {

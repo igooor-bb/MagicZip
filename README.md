@@ -1,16 +1,23 @@
 # MagicZip
 
-A Swift library for reading and creating ZIP archives over vendored minizip-ng 4.2.2. Supports **iOS 16+, iOS Simulator and macOS 13+**, with **Xcode 26.0+ / Swift tools 6.2**. The public product/module is `MagicZip`. No experimental Swift flags or external runtime dependencies: Apple builds use system zlib, CommonCrypto and Security.
+MagicZip is a modern Swift library for reading and creating ZIP archives, with a type-safe API, selective extraction, AES-256 encryption and async/await support.
+
+*Uses [minizip-ng](https://github.com/zlib-ng/minizip-ng) as its ZIP engine.*
+
+- **Requirements:** iOS 16+ or macOS 13+, with Xcode 26+ / Swift 6.2.
+- **ZIP support:** Store and Deflate compression, UTF-8 names, and ZIP64.
 
 ## Installation
 
-### Swift Package (primary)
+### Swift Package Manager
+
+Add MagicZip to your package dependencies:
 
 ```swift
 .package(url: "https://github.com/igooor-bb/MagicZip.git", from: "0.1.0")
 ```
 
-Add `.product(name: "MagicZip", package: "MagicZip")` to your target. Until a release tag is published, use a local package checkout or an explicitly chosen commit revision.
+Then add `.product(name: "MagicZip", package: "MagicZip")` to your target. Until a release tag is available, use a local checkout or a specific commit revision.
 
 ### CocoaPods
 
@@ -18,192 +25,101 @@ Add `.product(name: "MagicZip", package: "MagicZip")` to your target. Until a re
 pod 'MagicZip', '~> 0.1'
 ```
 
-The pod depends on the companion implementation spec `MagicZipCMinizip`, whose Clang module is `CMinizip`. Both specs must be available in your spec repository. Nothing is published by this checkout. For local development, use both paths:
+Both `MagicZip` and `MagicZipCMinizip` must be available in your spec repository. For a local checkout:
 
 ```ruby
 pod 'MagicZip', :path => '/path/to/MagicZip'
 pod 'MagicZipCMinizip', :path => '/path/to/MagicZip'
 ```
 
-SPM and CocoaPods compile the same Swift, C, configuration and patched vendor files. The separate C target avoids mixed-language target workarounds. Consumers use:
-
-```swift
-import MagicZip
-```
-
 ## Read and extract
 
+Browse entries, read a file, or extract a folder:
+
 ```swift
+import Foundation
+import MagicZip
+
 try ZIPReader.withArchive(at: archiveURL) { reader in
     for entry in reader.entries {
-        print(entry.path, entry.uncompressedSize, entry.encryption)
+        print(entry.path)
     }
-    let metadata = reader.entry(at: "assets/logo.png")
-    let smallFile = try reader.data(path: "notes.txt", maximumBytes: 1024 * 1024)
-    try reader.read(path: "video.mov") { chunk in
-        // Consume owned Data synchronously. Success is confirmed only after the final integrity check.
-        consume(chunk)
-    }
+
+    let contents = try reader.data(path: "hello.txt")
     try reader.extract(to: outputURL, selection: .subtree("assets"))
 }
 ```
 
-Use `.all` (the default) or `.paths(["notes.txt", "empty/"])` for other selections. Unselected payloads are never opened. Copied metadata remains valid after the scope closes. Add `password:` when reading AES entries. Optional password failures never expose credentials in library-generated errors.
+Omit `selection` to extract the entire archive. For streaming large files, see [Streaming reads](Sources/MagicZip/MagicZip.docc/StreamingAndOwnership.md#streaming-reads).
 
 ## Create
 
+Create an archive from data, files and folders:
+
 ```swift
-try ZIPWriter.withArchive(at: archiveURL, password: "example-password", overwrite: .replace) { writer in
-    try writer.add(data: Data("Hello".utf8), path: "hello.txt", compression: .store)
-    try writer.add(file: sourceURL, path: "assets/source.bin",
-                   compression: .deflate(level: 9))
-    try writer.addDirectory(path: "empty")
-    try writer.add(directory: folderURL, path: "folder")
+try ZIPWriter.withArchive(at: archiveURL) { writer in
+    try writer.add(data: Data("Hello".utf8), path: "hello.txt")
+    try writer.add(file: sourceURL, path: "assets/source.bin")
+    try writer.add(directory: folderURL, path: "documents")
 }
 ```
 
-For a producer-backed stream, use `addStream(path:compression:modificationDate:producer:)`. The producer receives a maximum chunk size of 64 KiB and returns a nonempty `Data` no larger than requested, or `nil` at EOF. Source files/directories must remain stable during reading. Creation uses ZIP64 for entries of unknown final size, including small streamed files.
+Keep source files and folders unchanged until creation finishes. For password-protected archives, see [Passwords and encryption](Sources/MagicZip/MagicZip.docc/PasswordsAndEncryption.md).
 
 ## Async/await
 
-Use `withArchiveAsync` to suspend the caller while a complete archive session runs on a background work queue. Existing synchronous APIs remain available.
-
 ```swift
-try await ZIPWriter.withArchiveAsync(at: archiveURL, password: "example-password") { writer in
-    try writer.add(file: sourceURL, path: "assets/source.bin")
-}
-let entries = try await ZIPReader.withArchiveAsync(at: archiveURL, password: "example-password") { reader in
-    try reader.extract(to: outputURL, selection: .subtree("assets"), password: "example-password")
+let entries = try await ZIPReader.withArchiveAsync(at: archiveURL) { reader in
+    try reader.extract(to: outputURL)
     return reader.entries
 }
 ```
 
-Bodies are synchronous `@Sendable` closures; capture immutable URLs/data/options and return owned `Sendable` values. Readers/writers stay inside their scope. Streaming callbacks still consume/produce bounded chunks synchronously; async producers and `AsyncSequence` are not provided. Do not access main-actor state from the body or synchronously wait for another async archive operation. Task-local values and task identity do not propagate into the body.
+All reader and writer types provide `withArchiveAsync`. The closure runs synchronously on a background queue. Use the reader or writer only inside that closure. To use results afterward, return values such as `Data` or `[ZIPEntry]`, which conform to `Sendable`.
 
-A shared queue runs at most two async sessions at once. Cancellation is forwarded explicitly to archive checkpoints, including before publishing each result. Await waits for finalization and cleanup, even when cancelled. A cancelled queued job skips its body when a worker becomes available; native calls and user callbacks cannot be interrupted. Cancellation racing with or following publication does not undo the result and may still return success. Arbitrary body code must finish or throw before cancellation can be observed by the next archive operation.
+Cancelling the task requests a stop, but does not interrupt an active file operation or your callback. MagicZip checks for cancellation between processing steps. The `await` finishes only after the archive is closed and cleanup is complete.
 
-## Ownership, limits and publication
+## Behavior and limits
 
-- Reader/writer sessions own one handle, are synchronous and non-`Sendable`, and reject concurrent/reentrant use. An internal `~Copyable` owner prevents handle copies. Successful scopes explicitly check entry/archive finalization. A failed add invalidates the writer. Descriptor transfer uses `consuming` and `discard self`; filesystem helpers use `borrowing`.
-- Streaming payload memory is bounded. Metadata grows with entries/name bytes and has finite budgets. Defaults: 100,000 entries, 16 MiB names, 1 GiB per entry, 4 GiB per selected operation, maximum expansion ratio 1,000. Customize `ZIPLimits`; `data` has a separate 16 MiB default cap.
-- Files/trees are staged privately beside the destination. Default overwrite policy is `.fail`; `.replace` atomically replaces a complete destination of the same type without merging. Failure before publication removes staging output and preserves the old destination. Cleanup failure after publication is reported, with the new result already visible.
-- Task cancellation is checked between chunks; callbacks can throw. CRC-32, sizes and AES HMAC are checked before successful completion. Streamed chunks remain provisional until then.
-- Destination parents must exist and contain no symlink components. This intentionally rejects system aliases such as `/tmp` and `/var`; use their actual paths, e.g. `/private/tmp`. Foundation's `resolvingSymlinksInPath()` may retain these aliases on macOS.
-- Traversal, absolute/ambiguous names, duplicates, case/Unicode aliases, file/directory conflicts, symlinks and special files are rejected. Writes/cleanup are descriptor-relative and do not follow symlinks. Permissions and timestamps are not restored during extraction.
+- Destination parents must already exist. File paths must contain no symlink components. Use actual paths such as `/private/tmp` instead of symlink aliases like `/tmp`.
+- Existing destinations fail by default. Pass `overwrite: .replace` to replace a complete file or directory without merging directories. Failure before publication preserves the old destination. A cleanup error after publication can leave the new result visible.
+- Traversal paths, conflicting names, symlinks and special files are rejected. Extraction does not restore permissions or timestamps.
+- Reader defaults allow 100,000 entries, 1 GiB per entry and 4 GiB per selected operation, with additional path and expansion limits. Adjust `ZIPLimits` for your workload. `data` has a separate 16 MiB default cap.
+- ZipCrypto, AES-128/192, legacy filename encodings, split archives and archive append are unsupported.
 
-Supported: Store/Deflate, plaintext/WinZIP AES-256, UTF-8, empty entries, ZIP64. Unsupported: ZipCrypto, AES-128/192, legacy filename encodings, split archives, other compression methods, in-place modification/append, custom containers and MagicBox/BundleSupport integration. Unsupported codecs/encryption can be listed but throw when selected. No secure-erasure or power-loss durability guarantee; abrupt process termination may leave a staging directory.
+See [Safety and limits](Sources/MagicZip/MagicZip.docc/SafetyAndLimits.md) for the full contract and [Streaming and ownership](Sources/MagicZip/MagicZip.docc/StreamingAndOwnership.md) for streaming, cancellation and error handling. API reference documentation is available through Xcode's **Build Documentation** command.
 
 ## Development
 
-Infrastructure follows [Wift](https://github.com/igooor-bb/wift): pinned mise tools and identical local/CI tasks. Install mise and Xcode 26+, then:
+With Xcode 26+ selected and mise installed:
 
 ```sh
 mise trust
 mise install
-mise run setup        # locked Python fixture tools and CocoaPods/xcodeproj
-mise run format       # SwiftFormat + clang-format, owned code only
-mise run format-check # checks both Swift and C
-mise run lint         # SwiftLint
-mise run lint-markdown # rumdl
-mise run format-markdown # rumdl automatic formatting
-mise run test         # Swift Testing
-mise run check        # format-check, lint, lint-markdown, test
-mise run validate-apple
-mise run validate-pods
-mise run benchmark -- list  # independent Release benchmark package
+mise run check
 ```
 
-SwiftFormat 0.62.1, SwiftLint 0.65.1, clang-format 22.1.8, Python 3.14.7, uv 0.12.11 and Ruby 3.4.10 are pinned. Markdown is checked by [rumdl](https://github.com/rvben/rumdl) 0.2.73, pinned in mise. Its cache lives in `.cache/rumdl/`; `.rumdl.toml` excludes vendored code, keeps each paragraph on one source line, enforces compact tables and detects unused lint suppression comments. Visual wrapping is left to the renderer; use a trailing backslash for an explicit line break or a blank line for a new paragraph. See [Benchmarks](Benchmarks/README.md) for runtime/allocation metrics, archive sizes and local baseline comparisons. Repository automation uses [Wift](https://github.com/igooor-bb/wift) 0.1.0, installed by mise from its GitHub release. `mise run` supplies `WIFT_CACHE_DIR` pointing to `.cache/wift/` in this checkout. The entire `.cache/` directory is ignored, including Wift's sibling coordination file `.cache/.wift-wift.lock`. Only `.cache/wift/` is included in the CI cache; the lock file is recreated locally. Run a script directly with `mise exec -- ./Scripts/format-c.swift --check`; scripts resolve the repository from their invocation path, so their working directory does not depend on Wift's compilation cache. CI caches both mise tools and `.cache/wift/`. Wift validates source/toolchain fingerprints before reusing compiled scripts; a cache miss compiles normally. Python fixture/import/symbol-checking tools and Ruby CocoaPods tools remain in their existing languages; benchmark environment metadata is generated by `Scripts/benchmark-metadata.py`. `uv.lock` fixes Python fixture dependencies; `Gemfile.lock` fixes CocoaPods/xcodeproj and transitive gems. Use `uv run --locked --group fixtures` and `bundle exec` through the mise tasks. Vendored code is excluded from formatting/linting. Apple validation builds macOS, iOS device and Simulator plus DocC. See [Validation](Validation/README.md) for real CocoaPods clients, independent ZIP compatibility, RSS measurements and fixture regeneration. Public declarations have DocC comments and the catalog lives in `Sources/MagicZip/MagicZip.docc`.
+Tool versions and tasks are defined in [.mise.toml](.mise.toml).
 
-## Updating minizip-ng
+- [Tests](Tests/README.md): unit tests, memory budgets and resource checks.
+- [Validation](Validation/README.md): platform builds, DocC, CocoaPods and compatibility.
+- [Benchmarks](Benchmarks/README.md): local Release measurements and baseline comparisons.
+- [Updating minizip-ng](Scripts/minizip/README.md): vendor updates and local patches.
+
+## Contributing
+
+Fork the repository, clone your fork, and create a branch for your change. Follow the setup steps in [Development](#development) and keep each pull request focused on one change.
+
+Use the repository's formatters and run the checks before submitting:
 
 ```sh
-mise run update-minizip -- --ref 4.2.2
+mise run format          # Swift, C and Swift examples in Markdown
+mise run format-markdown # Markdown layout
+mise run check
 ```
 
-The first vendoring was performed with this same script. It accepts exact tags/full commits, resolves tags, downloads from official upstream, validates the archive, selects reviewed files and atomically replaces only the vendor directory. Ordinary builds never download or run CMake.
-
-Current provenance is in [`METADATA.json`](Sources/CMinizip/vendor/METADATA.json): upstream URL, ref, resolved commit, archive SHA-256 and configuration/ordered patch hashes. Local patches are in [`Scripts/minizip/patches`](Scripts/minizip/patches), applied in explicit `series` order. See [the importer guide](Scripts/minizip/README.md). Repeat the import and verify no diff.
-
-C symbol isolation is generated for all upstream `mz_*` identifiers, including globals, using `magiczip_` names. The compatibility API is not compiled. A Clang module name alone would not prevent collisions; private validation links an independent ZIP implementation in the same process.
+Commit your changes, push the branch to your fork, and open a pull request. Describe what changed, why, and how you tested it. Include tests and documentation updates where relevant.
 
 ## License
 
-MagicZip-owned code is MIT licensed; see [LICENSE](LICENSE). Vendored minizip-ng retains its zlib license and original source notices. See [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).
-
-### Path and source budgets
-
-Reader defaults include `maximumPathDepth: 256` and `maximumPathNodes: 100_000` in `ZIPLimits`. Depth includes the final name; implicit directories consume nodes. Writers use the same finite budgets, 100,000 entries and 16 MiB of names. The registry stores parent IDs and individual components: expected linear work in name bytes and linear storage, without recursive teardown.
-
-Directory creation and cleanup are iterative, with descriptor usage independent of depth. Source names are sorted once per directory and globally bounded; cleanup removes batches of 256 names per level and has no archive depth limit. Reopening components from the pinned root costs O(sum of visited depths) filesystem operations while preserving symlink protection. Source cancellation is checked during traversal; cleanup still attempts to finish.
-
-Archive creation rejects sources overlapping its staging directory, open output or previous destination by device/inode, including aliases. A destination inside the source tree fails without replacing the old result. Ordinary `.magiczip-user` directories remain valid sources. Directory subtree selection accepts explicit names with or without a trailing slash and keeps UTF-8 spelling exact. Scan and close failures are combined rather than losing the close error.
-
-File input uses one noncopyable 64 KiB buffer; reading reuses a Swift-managed byte array. Both borrow bytes across internal file/C boundaries; public callbacks still receive independent owned `Data`. CRC, AES HMAC and size checks remain enabled. See [validation](Validation/README.md) for reproducible performance measurements and the separate resource-limited tree checks.
-
-### Password APIs
-
-`ZIPWriter.withArchive(at:password:overwrite:body:)` sets one optional password for all regular files, including files added through trees and producers. Its `add` methods do not accept passwords. `nil` creates plaintext files. Explicit directory entries remain unencrypted. Passwords are validated before the writer body runs.
-
-Use `MixedZIPWriter` when entries intentionally have different passwords. Each `add` / `addStream` requires an explicit `password:`; pass `nil` for plaintext. Both writer types have `withArchiveAsync` and share the same transaction, limits, exclusive handle ownership and failure cleanup.
-
-```swift
-try MixedZIPWriter.withArchive(at: archiveURL) { writer in
-    try writer.add(data: first, path: "first.txt", password: "first-password")
-    try writer.add(data: second, path: "second.txt", password: "second-password")
-    try writer.add(data: readme, path: "README.txt", password: nil)
-}
-try ZIPReader.withArchive(at: archiveURL) { reader in
-    try reader.extract(to: outputURL) { entry in
-        passwordsByPath[entry.path]
-    }
-}
-```
-
-`extract(to:selection:overwrite:passwordProvider:)` invokes its synchronous throwing provider once per selected encrypted entry, never for plaintext or unselected entries. A missing/wrong password or provider error rolls back extraction. Password retries and caching are the caller's responsibility. Do not reenter the reader from the provider. Names and other ZIP metadata are visible without a password and are untrusted input. The single-password extraction overload delegates to this same implementation.
-
-Migration: move `password:` from ordinary writer additions to `withArchive` (or `withArchiveAsync`), or explicitly choose `MixedZIPWriter` and specify passwords on every addition. Scoped lifetimes and atomic publication are unchanged.
-
-### Encrypted catalogs (limited compatibility)
-
-`SecureZIPWriter` / `SecureZIPReader` implement minizip-ng's **CDCD extension**, not PKWARE central-directory encryption. Use them only with a compatible reader; compatibility with Finder or ordinary ZIP tools is not promised. This is a separate, explicit API, not an automatic mode switch in `ZIPWriter`.
-
-```swift
-try SecureZIPWriter.withArchive(at: archiveURL, password: "secret") { writer in
-    try writer.add(data: contents, path: "private/report.txt")
-}
-try SecureZIPReader.withArchive(at: archiveURL, password: "secret") { reader in
-    print(reader.entries.map(\.path))
-    try reader.extract(to: outputURL)
-}
-```
-
-Both types also provide `withArchiveAsync`. One mandatory password protects all regular files and the catalog. There are no per-entry password parameters. Readers authenticate the entire catalog **before invoking the scope body**. File payloads are still authenticated only when read. Ordinary `ZIPReader` rejects the CDCD wrapper with an error directing callers to `SecureZIPReader`; Secure readers reject ordinary archives and catalogs containing unencrypted regular files. An ordinary file merely named `__cdcd__` remains valid in the normal API.
-
-The real directory is stored in one AES-256 `__cdcd__` entry. Local filenames are replaced with opaque names and local timestamps are masked. This hides original names, paths and timestamps, but does **not** conceal the archive's existence, entry count, file/directory boundaries, compression methods or approximate sizes. Empty directories have no encrypted payload; their original names live in the encrypted catalog. The password does not establish an author's identity.
-
-The decrypted catalog has a fixed 64 MiB allocation budget on both write and read, in addition to ordinary `ZIPLimits`. Catalog processing checks cancellation every 64 KiB and verifies size and AES HMAC before exposing metadata. Decrypted metadata then passes the same path, conflict, special-file and resource validation as ordinary ZIPs. Atomic publication and cleanup guarantees apply to Secure archives too.
-
-### Backend error diagnostics
-
-`ZIPError.backend` carries a typed `ZIPBackendOperation`, optional entry path, and original `Int32` status. `backendStatus` adds a known code, minizip symbol and readable message. Unknown backend codes remain intact with `code == nil`; no guessed mapping is applied. `localizedDescription` includes the operation, path and original status. Messages are English diagnostics; switch on the code to provide localized product UI.
-
-```swift
-do {
-    try ZIPReader.withArchive(at: archiveURL) { reader in
-        try reader.extract(to: outputURL, password: password)
-    }
-} catch let error as ZIPError {
-    if case let .backend(operation, path, rawStatus) = error {
-        print(operation, path ?? "archive", rawStatus)
-        if error.backendStatus?.code == .passwordError {
-            // Ask the caller for a password; retry is an explicit application decision.
-        }
-    }
-    print(error.localizedDescription)
-}
-```
-
-`integrityError` covers both CRC and AES HMAC failures: minizip uses `MZ_CRC_ERROR` for both, so the code alone cannot distinguish them. For `combined(primary:cleanup:)`, inspect each branch; `backendStatus` intentionally does not choose one and hide the other. Callback and cancellation errors retain their original types.
-
-Migration: code constructing backend errors uses enum cases such as `.openArchive` instead of operation strings. Code matching the numeric `status` keeps working.
+MagicZip is licensed under [MIT](LICENSE). Vendored minizip-ng retains its zlib license. See [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).

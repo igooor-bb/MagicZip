@@ -1,145 +1,202 @@
 import Foundation
 
-/// A failure reported by MagicZip, with operation and path context but never a password.
+/// An error encountered while reading or creating an archive.
 ///
-/// Native status codes are diagnostic details, not a stable API contract. Callback errors
-/// (including `CancellationError`) retain their original type. When cleanup also fails,
-/// ``ZIPError/combined(primary:cleanup:)`` preserves both errors.
+/// Cases describe the failure and include path or operation details where available.
+/// Library-generated diagnostics never include passwords. Callback errors, including
+/// `CancellationError`, retain their original types.
+///
+/// If both an operation and its cleanup fail, ``combined(primary:cleanup:)`` preserves both errors.
+/// See <doc:StreamingAndOwnership> for error handling.
 public indirect enum ZIPError: Error {
 
-    /// A minizip, codec, authentication, or checksum operation failed.
+    /// The ZIP engine could not complete an operation.
+    ///
     /// - Parameters:
     ///   - operation: The operation that failed.
     ///   - path: The entry path, when applicable.
-    ///   - status: The original minizip status code; use backendStatus for its typed interpretation.
+    ///   - status: The original backend status. Use ``ZIPError/backendStatus`` for readable diagnostics.
+    ///
+    /// Raw backend codes are diagnostic details and may vary with the backend version.
     case backend(operation: ZIPBackendOperation, path: String?, status: Int32)
 
-    /// A filesystem operation failed with a POSIX error number.
+    /// A file or directory operation failed.
+    ///
+    /// - Parameters:
+    ///   - operation: The operation that failed.
+    ///   - path: The affected filesystem path.
+    ///   - code: The underlying POSIX error code.
     case fileSystem(operation: String, path: String, code: Int32)
 
-    /// An operation attempted to use a closed or failed session.
+    /// The archive session has closed or was invalidated by an earlier failure.
     case closed
 
-    /// Concurrent or reentrant access attempted to use the same session.
+    /// The session is already performing another operation.
+    ///
+    /// Wait for the current operation to finish. Do not call the same session from one of its callbacks.
     case busy
 
-    /// An option, password length, or stream chunk violated the documented contract.
+    /// An argument does not meet the operation's requirements.
     case invalidArgument(String)
 
-    /// An entry path is absolute, ambiguous, or contains traversal components.
+    /// An entry path is not safe to use.
+    ///
+    /// See <doc:SafetyAndLimits> for accepted paths.
     case unsafePath(String)
 
-    /// Multiple entries alias the same path, or a file conflicts with a directory.
+    /// Entry paths conflict with one another.
     case conflictingPath(String)
 
-    /// The archive uses an unsupported entry type, encoding, compression, or encryption.
+    /// The archive requires a feature that MagicZip does not support.
     case unsupported(path: String?, feature: String)
 
-    /// An advertised or actual size exceeds a configured resource limit.
+    /// The operation exceeds an archive resource limit.
     case limitExceeded(String)
 
-    /// No entry has the requested exact UTF-8 path.
+    /// The archive has no entry at the requested path.
     case entryNotFound(String)
 
-    /// An operation failed and a subsequent close or cleanup also failed.
+    /// An operation and its cleanup both failed.
+    ///
+    /// Inspect `primary` for the original failure and `cleanup` for the error encountered while
+    /// closing resources or removing temporary output.
     case combined(primary: any Error, cleanup: any Error)
 }
 
-/// Compression supported when creating an entry. Values outside `0...9` throw before writing.
+/// The compression method to use when adding a file.
 public enum ZIPCompression: Sendable, Equatable {
 
-    /// Store bytes without compression.
+    /// Stores the file without compression.
     case store
 
-    /// Deflate with a zlib level in `0...9`; the default is six.
-    /// Level zero uses Store, matching minizip's documented level-zero behavior.
+    /// Compresses the file using Deflate.
+    ///
+    /// - Parameter level: The compression level, from 0 to 9. Defaults to 6.
+    ///   Level 0 stores the file without compression. Higher levels favor smaller output over speed.
+    ///
+    /// Values outside this range cause the write operation to throw.
     case deflate(level: Int = 6)
 }
 
-/// Encryption used for an entry; credentials are supplied separately to reading/writing methods.
+/// The encryption used for an archive entry.
+///
+/// Supply passwords to the reader or writer. See <doc:PasswordsAndEncryption> for usage.
 public enum ZIPEncryption: Sendable, Equatable {
 
     /// An unencrypted entry.
     case none
 
-    /// WinZIP AES with a 256-bit key (AE-1 or AE-2 on read, AE-2 on write).
+    /// The entry uses AES-256 encryption.
+    ///
+    /// MagicZip reads WinZIP AE-1 and AE-2 entries and writes AE-2 entries.
     case aes256
 
-    /// An encryption variant that can be listed but cannot be read by this version.
+    /// The entry uses an unsupported encryption method.
+    ///
+    /// Its metadata can be listed, but reading its contents fails.
     case unsupported
 }
 
-/// An immutable metadata snapshot, independent of the reader's current C entry and lifetime.
+/// Information about a file or directory in an archive.
 ///
-/// These values come from the central directory; payload integrity is checked only when read.
-/// Instances are `Sendable` and remain usable after the reader closes.
+/// Metadata can be retained and shared after the reader closes. Listing an entry does not
+/// verify its contents. Treat metadata from an untrusted archive as untrusted input.
 public struct ZIPEntry: Sendable, Equatable {
 
-    /// The exact UTF-8 archive path; directory names may omit a trailing slash.
+    /// The entry's path inside the archive.
+    ///
+    /// Paths use the archive's original UTF-8 spelling. Directory names may omit a trailing slash.
     public let path: String
 
     /// Whether the entry is a directory.
     public let isDirectory: Bool
 
-    /// Compressed byte count, including encryption overhead when present.
+    /// The entry's compressed size in bytes.
+    ///
+    /// Includes encryption overhead for encrypted entries.
     public let compressedSize: Int64
 
-    /// Advertised uncompressed byte count; verified against actual output during reading.
+    /// The entry's uncompressed size in bytes, as recorded in the archive.
+    ///
+    /// The actual size is checked when the entry is read.
     public let uncompressedSize: Int64
 
-    /// Modification time recorded in the archive; timezone precision depends on its producer.
+    /// The modification date recorded in the archive.
+    ///
+    /// Precision and timezone handling depend on the program that created it.
     public let modificationDate: Date
 
-    /// ZIP compression method number: zero is Store, eight is Deflate.
+    /// The compression method recorded in the archive.
+    ///
+    /// This is the ZIP method identifier, including methods MagicZip cannot read.
+    /// Store is 0 and Deflate is 8.
     public let compressionMethod: UInt16
 
-    /// Encryption classification; unsupported variants fail explicitly when read.
+    /// The entry's encryption method.
     public let encryption: ZIPEncryption
 
-    /// Central-directory CRC-32. AE-2 normally stores zero and uses HMAC authentication instead.
+    /// The checksum recorded for the entry.
+    ///
+    /// This is the archive's CRC-32 value. AE-2 encrypted entries normally store zero and use
+    /// AES authentication instead. Reading the entry performs the applicable integrity checks.
     public let crc32: UInt32
     let position: Int64
 }
 
-/// Resource budgets for a reader. Metadata and selected output are bounded independently.
+/// Limits on archive metadata and decompressed data.
 ///
-/// Limits must be nonnegative and the ratio must be finite and positive. All advertised entry
-/// sizes are checked when opening. The total output budget applies to each read/extract operation,
-/// and counts only selected entries. Streaming payload buffers default to 64 KiB.
+/// Choose limits appropriate to the archives your application expects. The reader checks
+/// recorded entry sizes when opening an archive and actual output while reading. The total
+/// output limit applies separately to each read or extraction and counts only selected entries.
+///
+/// See <doc:SafetyAndLimits> for defaults and examples of how path limits are counted.
 public struct ZIPLimits: Sendable {
 
     /// Maximum number of entries, including directories.
     public var maximumEntries: Int
 
-    /// Maximum cumulative UTF-8 entry-name bytes retained in metadata.
+    /// The maximum combined size of entry paths in UTF-8 bytes.
     public var maximumPathBytes: Int
 
-    /// Maximum components in a path, including the final file or directory name; defaults to 256.
+    /// The maximum number of components in an entry path.
+    ///
+    /// Includes the final file or directory name. A trailing slash does not add a component.
     public var maximumPathDepth: Int
 
-    /// Maximum distinct path nodes, including implicit directories; defaults to 100,000.
+    /// The maximum number of distinct path nodes.
+    ///
+    /// Includes parent directories implied by entry paths, even when they have no explicit entries.
+    /// Shared parents count once.
     public var maximumPathNodes: Int
 
-    /// Maximum uncompressed bytes in one entry, advertised and actually produced.
+    /// The maximum uncompressed size of a single entry, in bytes.
+    ///
+    /// Applies to both its recorded size and the data produced when reading it.
     public var maximumEntryBytes: Int64
 
-    /// Maximum actual output bytes per read or extraction operation.
+    /// The maximum uncompressed bytes produced by one read or extraction.
     public var maximumTotalBytes: Int64
 
-    /// Maximum uncompressed/compressed ratio (using at least one compressed byte).
+    /// The maximum allowed expansion ratio when decompressing an entry.
+    ///
+    /// Calculated as uncompressed size divided by compressed size, treating a zero compressed
+    /// size as one byte. Highly repetitive data may exceed this limit even in a valid archive.
     public var maximumCompressionRatio: Double
 
-    /// Creates finite resource budgets; validation occurs when opening a reader.
+    /// Creates a set of archive resource limits.
+    ///
+    /// Limits are validated when opening a reader. All size and count limits must be nonnegative.
+    /// The expansion ratio must be finite and positive. These are application limits, not ZIP64
+    /// format limits.
+    ///
     /// - Parameters:
-    ///   - maximumEntries: Entry-count budget; defaults to 100,000.
-    ///   - maximumPathBytes: Metadata-name budget; defaults to 16 MiB.
-    ///   - maximumEntryBytes: Individual payload budget; defaults to 1 GiB.
-    ///   - maximumTotalBytes: Selected output budget; defaults to 4 GiB.
-    ///   - maximumCompressionRatio: Expansion-ratio budget; defaults to 1,000.
-    ///   - maximumPathDepth: Components per path, including the final name; defaults to 256.
-    ///   - maximumPathNodes: Distinct components with parents, including implicit directories; defaults to 100,000.
-    /// These defaults bound application work and memory; none is a ZIP/ZIP64 format maximum.
-    /// The ratio check is a decompression-bomb policy and may reject legitimate repetitive data.
+    ///   - maximumEntries: The entry count, including directories. Defaults to 100,000.
+    ///   - maximumPathBytes: The combined UTF-8 size of entry paths. Defaults to 16 MiB.
+    ///   - maximumEntryBytes: The uncompressed bytes per entry. Defaults to 1 GiB.
+    ///   - maximumTotalBytes: The uncompressed bytes per selected operation. Defaults to 4 GiB.
+    ///   - maximumCompressionRatio: The allowed expansion ratio. Defaults to 1,000.
+    ///   - maximumPathDepth: The components per path, including the final name. Defaults to 256.
+    ///   - maximumPathNodes: The distinct path nodes, including implied parents. Defaults to 100,000.
     public init(
         maximumEntries: Int = 100_000,
         maximumPathBytes: Int = 16 * 1024 * 1024,
@@ -168,27 +225,37 @@ public struct ZIPLimits: Sendable {
     }
 }
 
-/// The entries to extract, retaining their original paths underneath the destination.
+/// The files and directories to extract.
+///
+/// Selected entries retain their archive paths beneath the destination folder.
 public enum ZIPSelection: Sendable {
 
-    /// Every entry in central-directory order.
+    /// All entries in the archive.
     case all
 
-    /// Exact UTF-8 paths. A missing path fails before any output is published.
+    /// Entries matching the supplied paths.
+    ///
+    /// Use the exact UTF-8 spelling from ``ZIPEntry/path``. A missing path causes extraction to fail
+    /// before any output is published.
     case paths(Set<String>)
 
-    /// A directory and its descendants, with component boundaries respected.
-    /// The directory may be implicit; either `assets` or `assets/` is accepted.
+    /// A directory and everything beneath it.
+    ///
+    /// The directory may be implied by its children. Both `assets` and `assets/` select the folder,
+    /// but neither matches `assets-old`. An ordinary file is not a subtree.
     case subtree(String)
 }
 
-/// Atomic destination publication policy. Existing destinations are never merged.
+/// How to handle an existing destination.
 public enum ZIPOverwrite: Sendable {
 
-    /// Fail if anything already exists at the destination, including a symlink.
+    /// Fails if anything already exists at the destination.
     case fail
 
-    /// Atomically replace an existing file or directory of the same type.
-    /// A symlink destination is rejected. Failure before publication preserves the old result.
+    /// Replaces the existing destination with the completed result.
+    ///
+    /// The destination must have the same type as the result. Directories are replaced as a whole,
+    /// not merged, and symlink destinations are rejected. Failure before publication preserves
+    /// the old result. See <doc:SafetyAndLimits> for cleanup behavior.
     case replace
 }

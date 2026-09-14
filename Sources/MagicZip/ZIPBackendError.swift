@@ -1,7 +1,9 @@
 import Foundation
 
-/// The backend stage that failed. Switch over cases rather than parsing diagnostic strings.
-/// Raw values describe stages for diagnostics; they are not localized UI copy.
+/// The ZIP engine operation associated with a failure.
+///
+/// Switch over cases to handle specific operations. Raw strings are intended for diagnostics,
+/// not localized user-facing messages.
 public enum ZIPBackendOperation: String, Sendable, CaseIterable {
     case openArchive = "open archive"
     case closeArchive = "close archive"
@@ -34,37 +36,46 @@ public enum ZIPBackendOperation: String, Sendable, CaseIterable {
     case finalizeEntry = "finalize entry"
 }
 
-/// A lossless interpretation of a minizip status, including future or unknown values.
-/// `rawValue` always preserves the original code; `code` is nil when it is unrecognized.
-/// Messages are English diagnostic text. Use code cases for application-specific localization.
+/// Details about a status reported by the ZIP engine.
+///
+/// Use ``code`` to identify recognized statuses and ``message`` for readable diagnostics.
+/// ``rawValue`` preserves the original number, including unrecognized statuses.
+/// Map recognized codes to your own localized messages when needed.
 public struct ZIPBackendStatus: RawRepresentable, Sendable, Hashable, CustomStringConvertible {
+    /// The original numeric status reported by the backend.
     public let rawValue: Int32
 
+    /// Creates diagnostics for a backend status, including an unrecognized value.
     public init(rawValue: Int32) {
         self.rawValue = rawValue
     }
 
+    /// The recognized status, or `nil` if the value is unknown.
     public var code: Code? {
         Code(rawValue: rawValue)
     }
 
-    /// Original minizip symbol, or nil for an unrecognized status.
+    /// The backend's symbolic name for this status.
+    ///
+    /// Returns `nil` when the status is unrecognized.
     public var symbol: String? {
         code?.details.symbol
     }
 
-    /// Human-readable meaning without discarding or guessing the underlying status.
+    /// An English explanation of the status.
     public var message: String {
         code?.details.message ?? "Unknown minizip status."
     }
 
-    /// Meaning, backend symbol (when known), and the original numeric code.
+    /// A diagnostic description with the message and original status code.
     public var description: String {
         "\(message) (\(symbol ?? "minizip"), code \(rawValue))"
     }
 
-    /// Status definitions from the pinned backend; success/end sentinels are included for completeness.
-    /// https://github.com/zlib-ng/minizip-ng/blob/4.2.2/mz.h
+    /// Statuses recognized by MagicZip.
+    ///
+    /// Includes successful completion and end-of-data statuses as well as errors.
+    /// Values correspond to the backend's [status definitions](https://github.com/zlib-ng/minizip-ng/blob/4.2.2/mz.h).
     public enum Code: Int32, Sendable, CaseIterable {
         case success = 0
         case streamError = -1
@@ -79,6 +90,7 @@ public struct ZIPBackendStatus: RawRepresentable, Sendable, Hashable, CustomStri
         case internalError = -104
         // minizip's AES stream also returns MZ_CRC_ERROR for an HMAC mismatch.
         // https://github.com/zlib-ng/minizip-ng/blob/4.2.2/mz_strm_wzaes.c
+        /// File verification failed because of a checksum or AES authentication mismatch.
         case integrityError = -105
         case cryptographicError = -106
         case notFound = -107
@@ -152,8 +164,10 @@ public struct ZIPBackendStatus: RawRepresentable, Sendable, Hashable, CustomStri
 }
 
 public extension ZIPError {
-    /// Backend diagnostics for this error. Combined errors keep each branch separately;
-    /// inspect their primary and cleanup values rather than losing one to a single status.
+    /// Diagnostic details for a backend failure.
+    ///
+    /// Returns `nil` for other error cases. For ``ZIPError/combined(primary:cleanup:)``, inspect
+    /// both errors separately to retain the full context.
     var backendStatus: ZIPBackendStatus? {
         guard case let .backend(_, _, status) = self else {
             return nil
@@ -163,8 +177,9 @@ public extension ZIPError {
 }
 
 extension ZIPError: LocalizedError {
-    /// English diagnostic context suitable for logging or a fallback error display.
-    /// Callback errors remain unchanged; combined failures retain both descriptions.
+    /// An English description of the error for logs or a fallback message.
+    ///
+    /// Combined failures include both descriptions. Use error cases to provide localized UI.
     public var errorDescription: String? {
         switch self {
         case let .backend(operation, path, status):

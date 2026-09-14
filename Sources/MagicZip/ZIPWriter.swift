@@ -1,9 +1,16 @@
 import Foundation
 
-/// A scoped ZIP writer with one password for all regular files.
-/// Metadata remains visible without a password. Directory entries are unencrypted.
-/// The session is not Sendable; concurrent/reentrant calls fail. Any failed add invalidates it.
-/// Escaped sessions reject writes after the scope ends.
+/// Creates ZIP archives with an optional shared password.
+///
+/// Set a password when opening the archive to encrypt every file. Omit it to create an
+/// unencrypted archive. ZIP file encryption leaves names and metadata visible.
+/// See <doc:PasswordsAndEncryption> for password requirements and other encryption modes.
+///
+/// Use the writer only inside its archive closure. Calls must not overlap or call back into
+/// this writer. Any failed addition invalidates the session, even if the closure catches the error.
+///
+/// See <doc:StreamingAndOwnership> for session behavior and <doc:SafetyAndLimits> for path,
+/// resource and overwrite rules.
 public final class ZIPWriter {
     private let core: ArchiveWriter
     private let password: String?
@@ -12,8 +19,22 @@ public final class ZIPWriter {
         self.password = password
     }
 
-    /// Creates, closes and atomically publishes an archive. Failure preserves the old destination.
-    /// Passwords must contain 1...128 UTF-8 bytes without NUL; nil means plaintext.
+    /// Creates an archive using the supplied closure.
+    ///
+    /// The archive becomes visible at its destination after writing and finalization succeed.
+    /// If an error occurs before publication, an existing destination is preserved. Cleanup errors
+    /// can still be reported after the new archive is visible.
+    ///
+    /// - Parameters:
+    ///   - url: The archive destination. Its parent must exist and its path must not contain symlinks.
+    ///   - password: The password for all files, or `nil` to leave them unencrypted.
+    ///   - overwrite: How to handle an existing destination.
+    ///   - body: The work to perform with this writer. Use the writer only inside this closure.
+    /// - Returns: The value returned by `body`.
+    /// - Throws: ``ZIPError`` if creation fails. Errors thrown by `body` are preserved,
+    ///   including any additional cleanup error.
+    ///
+    /// See <doc:PasswordsAndEncryption> for password requirements.
     public static func withArchive<T>(
         at url: URL,
         password: String? = nil,
@@ -36,7 +57,12 @@ public final class ZIPWriter {
         }
     }
 
-    /// Runs a synchronous scope on the bounded archive queue; cancellation waits for cleanup.
+    /// Creates an archive on a background queue while the calling task waits asynchronously.
+    ///
+    /// The closure uses the same API as `withArchive` and runs synchronously. Return `Sendable`
+    /// results such as metadata or data, and use the writer only inside the closure.
+    /// Cancellation does not interrupt an active callback. The await completes after finalization
+    /// and cleanup. See <doc:StreamingAndOwnership> for cancellation behavior.
     public static func withArchiveAsync<T: Sendable>(
         at url: URL,
         password: String? = nil,
@@ -48,29 +74,69 @@ public final class ZIPWriter {
         }
     }
 
-    /// Adds bytes synchronously. Invalid paths, options or writes invalidate the session.
+    /// Adds in-memory data as a file in the archive.
+    ///
+    /// - Parameters:
+    ///   - data: The file contents.
+    ///   - path: The file's relative path inside the archive.
+    ///   - compression: The compression method for this file.
+    ///   - modificationDate: The modification date to record in the archive.
     public func add(data: Data, path: String, compression: ZIPCompression = .deflate(), modificationDate: Date = Date()) throws {
         try core.add(data: data, path: path, compression: compression, password: password, modificationDate: modificationDate)
     }
 
-    /// Streams a regular file; symlinks and sources overlapping the output transaction are rejected.
+    /// Adds a file from disk to the archive.
+    ///
+    /// The file is read in chunks. Keep it unchanged until this call finishes.
+    ///
+    /// - Parameters:
+    ///   - url: The source file. Symlinks and sources overlapping the archive output are rejected.
+    ///   - path: The file's relative path inside the archive.
+    ///   - compression: The compression method for this file.
     public func add(file url: URL, path: String, compression: ZIPCompression = .deflate()) throws {
         try core.add(file: url, path: path, compression: compression, password: password)
     }
 
-    /// Adds a stable directory tree. Symlinks are rejected; depth and metadata are bounded.
+    /// Adds a folder and its contents to the archive.
+    ///
+    /// Keep the source tree unchanged until this call finishes. Symlinks, special files and sources
+    /// that overlap the archive output are rejected.
+    ///
+    /// - Parameters:
+    ///   - url: The source folder.
+    ///   - path: The folder's relative path inside the archive, included before each child's name.
+    ///   - compression: The compression method for all files in the folder.
     public func add(directory url: URL, path: String, compression: ZIPCompression = .deflate()) throws {
         try core.add(directory: url, path: path, compression: compression, password: password)
     }
 
-    /// Adds an unencrypted empty directory; appends a trailing slash if needed.
+    /// Adds an empty directory to the archive.
+    ///
+    /// - Parameters:
+    ///   - path: The directory's relative path. A trailing slash is added if needed.
+    ///   - modificationDate: The modification date to record in the archive.
+    ///
+    /// Directory entries are not encrypted.
     public func addDirectory(path: String, modificationDate: Date = Date()) throws {
         try core.addDirectory(path: path, modificationDate: modificationDate)
     }
 
-    /// Streams chunks of 1...65536 bytes, or nil at EOF. The producer must not reenter this writer.
-    /// Producer errors invalidate the session. Paths are limited to 256 components; metadata to
-    /// 100,000 entries, 100,000 path nodes and 16 MiB of names. No payload-sized allocation occurs.
+    /// Adds a file from a sequence of data chunks.
+    ///
+    /// Use this method when data comes from a producer rather than a file or a complete `Data` value.
+    ///
+    /// - Parameters:
+    ///   - path: The file's relative path inside the archive.
+    ///   - compression: The compression method for this file.
+    ///   - modificationDate: The modification date to record in the archive.
+    ///   - producer: Called synchronously with the maximum requested chunk size, up to 64 KiB.
+    ///     Return nonempty data no larger than requested, or `nil` when finished. Do not call
+    ///     this writer again from the producer.
+    /// - Throws: An error if a chunk is invalid or writing fails. Producer errors are preserved.
+    ///   Any failure invalidates the writer.
+    ///
+    /// Streamed entries use ZIP64 even when small. See <doc:StreamingAndOwnership> for an example
+    /// and <doc:SafetyAndLimits> for archive limits.
     public func addStream(
         path: String,
         compression: ZIPCompression = .deflate(),

@@ -4,7 +4,7 @@ included:
   - Scripts
   - Benchmarks/Benchmarks
   - Validation/Compatibility/Sources
-  - Validation/StreamingProbe/Sources
+  - Benchmarks/StreamingProbe/Sources
   - Validation/PodClient/main.swift
 excluded:
   - Sources/CMinizip

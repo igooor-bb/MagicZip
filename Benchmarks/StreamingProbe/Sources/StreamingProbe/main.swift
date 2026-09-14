@@ -62,3 +62,5 @@ enum PerformanceProbe {
         case empty, argument
     }
 }
+
+try PerformanceProbe.run(Array(CommandLine.arguments.dropFirst()))

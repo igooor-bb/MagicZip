@@ -3,7 +3,7 @@
 import Darwin
 import Wift
 
-enum TreeValidationError: Error {
+enum TreeTestError: Error {
     case timedOut
 }
 
@@ -21,13 +21,13 @@ do {
         group.addTask { try await tests.run() }
         group.addTask {
             try await Task.sleep(for: .seconds(120))
-            throw TreeValidationError.timedOut
+            throw TreeTestError.timedOut
         }
         // Wift cancellation terminates and reaps the child before this scope returns.
         try await group.next()
     }
-} catch TreeValidationError.timedOut {
-    die("Tree resource validation exceeded 120 seconds.")
+} catch TreeTestError.timedOut {
+    die("Tree resource tests exceeded 120 seconds.")
 } catch let CommandError.unsuccessful(_, result) {
     exit(result.termination.exitCode)
 } catch {

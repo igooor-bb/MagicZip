@@ -2,16 +2,21 @@ internal import CMinizip
 import Darwin
 import Foundation
 
-/// A scoped, synchronous ZIP reader owning one native archive handle.
+/// Reads ZIP entries and extracts files from an archive.
 ///
-/// Open a session with ``withArchive(at:limits:body:)``. The class deliberately does not
-/// conform to `Sendable`; operations on the same session must not overlap or reenter from
-/// a callback. A runtime gate rejects such attempts. Escaped readers reject operations
-/// after the scope ends. Use separate sessions for parallel reads.
+/// Open a reader with ``withArchive(at:limits:body:)`` and use it inside the closure.
+/// Use separate sessions for parallel reads. Calls on one reader must not overlap or call
+/// back into it from a callback. File operations fail after the session closes, but copied
+/// entry metadata remains usable.
+///
+/// See <doc:StreamingAndOwnership> for streaming and async usage, and <doc:SafetyAndLimits>
+/// for supported formats and extraction rules.
 public final class ZIPReader {
 
-    /// Immutable, owned metadata snapshots in central-directory order.
-    /// Access does not move the native cursor or decompress payloads.
+    /// The archive's entries in their recorded order.
+    ///
+    /// Listing entries does not read their file contents. This metadata remains available after
+    /// the session closes.
     public let entries: [ZIPEntry]
     private let limits: ZIPLimits
     private let cancellation: ArchiveCancellation?
@@ -52,14 +57,17 @@ public final class ZIPReader {
         index = Dictionary(uniqueKeysWithValues: entries.enumerated().map { (Data($0.element.path.utf8), $0.offset) })
     }
 
-    /// Opens an archive, runs a synchronous body, and checks archive closure before returning.
+    /// Opens an archive for reading within a closure.
+    ///
+    /// The archive is closed before this method returns.
+    ///
     /// - Parameters:
-    ///   - url: A regular ZIP file URL. Symlink path components are rejected.
-    ///   - limits: Finite metadata and decompression budgets.
-    ///   - body: A nonescaping callback borrowing the session's lifetime; do not use it concurrently.
+    ///   - url: The archive file. Its path must not contain symlinks.
+    ///   - limits: Limits on archive metadata and decompressed data.
+    ///   - body: The work to perform with this reader. Use it only inside this closure.
     /// - Returns: The value returned by `body`.
-    /// - Throws: ``ZIPError`` for malformed metadata, unsupported paths or limits; callback errors
-    ///   propagate. If close also fails, both errors are preserved in ``ZIPError``.
+    /// - Throws: ``ZIPError`` if the archive cannot be opened or validated. Errors thrown by
+    ///   `body` are preserved, including any additional error while closing the archive.
     ///
     /// ```swift
     /// let names = try ZIPReader.withArchive(at: archiveURL) { reader in
@@ -86,22 +94,32 @@ public final class ZIPReader {
         }
     }
 
-    /// Finds an exact UTF-8 path without decompressing any entry.
-    /// - Parameter path: The full entry path, including a trailing slash for a directory.
-    /// - Returns: An owned snapshot, or `nil`. Lookup remains valid after the scope closes.
+    /// Finds an entry by its archive path.
+    ///
+    /// - Parameter path: The exact path as listed in ``entries``, including any trailing slash.
+    /// - Returns: The entry's metadata, or `nil` if no entry matches.
+    ///
+    /// Lookup is case-sensitive and does not read file contents. The result remains usable
+    /// after the session closes.
     public func entry(at path: String) -> ZIPEntry? {
         index[Data(path.utf8)].map { entries[$0] }
     }
 
-    /// Streams only the requested entry and verifies its length, CRC or AES HMAC before success.
+    /// Reads a file's contents in chunks.
+    ///
     /// - Parameters:
-    ///   - path: Exact UTF-8 entry path.
-    ///   - password: AES password; 1...128 UTF-8 bytes without NUL, or `nil` for plaintext.
-    ///   - chunkSize: Maximum callback chunk size, in `1...1048576`; defaults to 64 KiB.
-    ///   - consumer: Receives owned chunks synchronously. Throw to cancel; do not reenter this reader.
-    /// - Throws: ``ZIPError`` for missing/unsupported entries, wrong passwords, integrity or budget
-    ///   failures; cancellation and consumer errors propagate. Previously delivered chunks cannot
-    ///   be revoked: treat them as provisional until this method returns successfully.
+    ///   - path: The exact entry path.
+    ///   - password: The file's password, or `nil` for an unencrypted file.
+    ///   - chunkSize: The maximum bytes per chunk, from 1 byte to 1 MiB. Defaults to 64 KiB.
+    ///   - consumer: Called synchronously with each `Data` chunk. You can retain chunks or throw
+    ///     to stop reading. Do not call this reader again from the callback.
+    /// - Throws: ``ZIPError`` if reading or verification fails. Callback and cancellation errors
+    ///   are preserved.
+    ///
+    /// - Important: Chunks are not fully verified until this method returns successfully.
+    ///   Discard data from a failed read, or use extraction to publish only verified files.
+    ///
+    /// See <doc:StreamingAndOwnership> for examples and <doc:PasswordsAndEncryption> for passwords.
     public func read(
         path: String,
         password: String? = nil,
@@ -120,13 +138,18 @@ public final class ZIPReader {
         }
     }
 
-    /// Reads one entry into memory, with an additional allocation limit.
+    /// Reads an entry's complete contents into memory.
+    ///
+    /// Prefer ``read(path:password:chunkSize:consumer:)`` for large files.
+    ///
     /// - Parameters:
-    ///   - path: Exact entry path.
-    ///   - password: Optional AES password, subject to the streaming password contract.
-    ///   - maximumBytes: Maximum returned data size; defaults to 16 MiB.
-    /// - Returns: Owned, integrity-verified data (empty for an empty entry or directory).
-    /// - Throws: The errors documented for ``read(path:password:chunkSize:consumer:)`` or a size-limit error.
+    ///   - path: The exact entry path.
+    ///   - password: The file's password, or `nil` for an unencrypted file.
+    ///   - maximumBytes: The maximum returned data size. Defaults to 16 MiB and must be nonnegative.
+    /// - Returns: Verified file data, or empty data for an empty file or directory.
+    /// - Throws: A reading or verification error, or ``ZIPError`` if the size limit is exceeded.
+    ///
+    /// The reader's ``ZIPLimits`` also apply.
     public func data(path: String, password: String? = nil, maximumBytes: Int = 16 * 1024 * 1024) throws -> Data {
         guard maximumBytes >= 0 else {
             throw ZIPError.invalidArgument("maximumBytes must be nonnegative")
@@ -147,16 +170,21 @@ public final class ZIPReader {
         return result
     }
 
-    /// Extracts selected entries into a private directory and publishes the complete result atomically.
+    /// Extracts files to a destination folder.
+    ///
+    /// The completed result replaces the destination as a whole, without merging folders.
+    /// Failure before publication preserves an existing destination. If cleanup fails after
+    /// publication, the method throws but the new result is already visible.
+    ///
     /// - Parameters:
-    ///   - destination: Output directory; its parent must exist and contain no symlink components.
-    ///   - selection: All entries, exact paths, or a subtree. Unselected payloads are never read.
-    ///   - password: Optional password applied to selected encrypted entries.
-    ///   - overwrite: Fail if the destination exists, or replace the whole directory atomically.
-    /// - Throws: ``ZIPError`` for paths, unsupported features, I/O, integrity, and limits;
-    ///   `CancellationError` if the current task is cancelled. Failure before publication removes
-    ///   staging output and preserves the previous destination. A post-publication cleanup failure
-    ///   is reported, but the new result is already visible. Permissions and timestamps are not restored.
+    ///   - destination: The output folder. Its parent must exist and its path must not contain symlinks.
+    ///   - selection: The entries to extract. Defaults to all entries.
+    ///   - password: A shared password for the selected encrypted files.
+    ///   - overwrite: How to handle an existing destination. Defaults to failing if it exists.
+    /// - Throws: ``ZIPError`` if extraction fails, or a cancellation error if cancellation is observed.
+    ///
+    /// Only selected file contents are read. Original permissions and timestamps are not restored.
+    /// See <doc:SafetyAndLimits> for extraction rules.
     ///
     /// ```swift
     /// try ZIPReader.withArchive(at: archiveURL) { reader in
@@ -172,10 +200,21 @@ public final class ZIPReader {
         try extract(to: destination, selection: selection, overwrite: overwrite, passwordProvider: { _ in password })
     }
 
-    /// Extracts atomically, resolving a password once for each selected encrypted entry.
-    /// Plaintext entries do not call the provider. Nil or an incorrect password fails extraction;
-    /// provider errors propagate and remove staging output. No password cache or retries are implicit.
-    /// Entry metadata is untrusted archive input. The provider must not reenter this reader.
+    /// Extracts files using a separate password for each encrypted entry.
+    ///
+    /// Uses the same destination and overwrite rules as ``extract(to:selection:password:overwrite:)``.
+    /// See <doc:PasswordsAndEncryption> for an example.
+    ///
+    /// - Parameters:
+    ///   - destination: The output folder. Its parent must exist and its path must not contain symlinks.
+    ///   - selection: The entries to extract. Defaults to all entries.
+    ///   - overwrite: How to handle an existing destination.
+    ///   - passwordProvider: Called once per selected encrypted entry, and never for unencrypted
+    ///     or unselected entries. Return that entry's password. Do not call this reader from the provider.
+    /// - Throws: An extraction error if a password is missing or incorrect. Provider errors are preserved.
+    ///
+    /// Handle retries and password caching in your application. Treat metadata passed to the provider
+    /// as untrusted input. Failure before publication preserves an existing destination.
     public func extract(
         to destination: URL,
         selection: ZIPSelection = .all,

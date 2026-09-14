@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import MagicZip
 
-private enum StreamingValidation {
+private enum StreamingMemoryTests {
     static let checksZIP64 = CommandLine.arguments.contains("--zip64")
     static let payloadBytes: Int64 = checksZIP64 ? 5 * 1024 * 1024 * 1024 : 512 * 1024 * 1024
     static let limits = ZIPLimits(maximumEntryBytes: payloadBytes, maximumTotalBytes: payloadBytes)
@@ -19,7 +19,7 @@ private enum StreamingValidation {
         try verifySelectiveExtraction(archive: archive, root: root)
         let peak = try peakResidentMiB()
         guard peak < maximumResidentMiB else {
-            throw ValidationFailure.memoryBudgetExceeded(peak)
+            throw TestFailure.memoryBudgetExceeded(peak)
         }
         print("PASS: streamed \(payloadBytes) bytes; peak RSS \(String(format: "%.1f", peak)) MiB; corrupt unselected payload untouched")
     }
@@ -45,7 +45,7 @@ private enum StreamingValidation {
             try reader.read(path: "large.bin") { bytesRead += Int64($0.count) }
         }
         guard bytesRead == payloadBytes else {
-            throw ValidationFailure.payloadMismatch
+            throw TestFailure.payloadMismatch
         }
     }
 
@@ -71,21 +71,21 @@ private enum StreamingValidation {
         let contents = try FileManager.default.contentsOfDirectory(atPath: output.path)
         let data = try Data(contentsOf: output.appendingPathComponent("wanted.txt"))
         guard contents == ["wanted.txt"], data == Data("selected".utf8) else {
-            throw ValidationFailure.payloadMismatch
+            throw TestFailure.payloadMismatch
         }
     }
 
     static func peakResidentMiB() throws -> Double {
         var usage = rusage()
         guard getrusage(RUSAGE_SELF, &usage) == 0 else {
-            throw ValidationFailure.resourceUsage
+            throw TestFailure.resourceUsage
         }
         return Double(usage.ru_maxrss) / 1024 / 1024
     }
 
     static func makeTemporaryDirectory() throws -> URL {
         guard let path = realpath(FileManager.default.temporaryDirectory.path, nil) else {
-            throw ValidationFailure.temporaryDirectory
+            throw TestFailure.temporaryDirectory
         }
         defer { free(path) }
         let root = URL(fileURLWithPath: String(cString: path)).appendingPathComponent("MagicZipMemory-" + UUID().uuidString)
@@ -93,7 +93,7 @@ private enum StreamingValidation {
         return root
     }
 
-    enum ValidationFailure: Error {
+    enum TestFailure: Error {
         case temporaryDirectory
         case payloadMismatch
         case resourceUsage
@@ -101,8 +101,4 @@ private enum StreamingValidation {
     }
 }
 
-if CommandLine.arguments.contains("--benchmark") {
-    try PerformanceProbe.run(Array(CommandLine.arguments.dropFirst()))
-} else {
-    try StreamingValidation.run()
-}
+try StreamingMemoryTests.run()

@@ -2,26 +2,21 @@ import Foundation
 
 public extension ZIPReader {
 
-    /// Opens, uses and closes an archive on a bounded background work queue.
+    /// Reads an archive on a background queue while the calling task waits asynchronously.
     ///
-    /// The calling task suspends while the synchronous body runs off the main thread.
-    /// The reader owns its handle for this body only and is not `Sendable`. Do not retain
-    /// it, use it concurrently or reenter it from a callback. Return owned `Sendable` values.
-    /// The body and stream callbacks cannot suspend and must not access main-actor state.
+    /// Use the reader only inside the closure. Return results such as `Data` or `[ZIPEntry]`
+    /// to use them afterward. The closure runs synchronously and cannot access main-actor state.
+    ///
     /// - Parameters:
-    ///   - url: Regular ZIP file URL without symlink path components.
-    ///   - limits: Metadata and decompression budgets, identical to synchronous reading.
-    ///   - body: Synchronous background work, including listing, streaming or selective extraction.
-    /// - Returns: The body's result after the native archive has been closed successfully.
-    /// - Throws: The same errors as ``withArchive(at:limits:body:)``, including body errors
-    ///   and combined cleanup failures. Task cancellation is forwarded to archive checkpoints.
+    ///   - url: The archive file. Its path must not contain symlinks.
+    ///   - limits: Limits on archive metadata and decompressed data.
+    ///   - body: The synchronous work to perform with this reader.
+    /// - Returns: The closure's result after the archive has been closed.
+    /// - Throws: A reading, callback or cancellation error. Additional cleanup errors are preserved.
     ///
-    /// Cancellation is cooperative: it cannot interrupt a callback or native call. A queued
-    /// cancelled job skips its body when admitted. The await completes only after closure and
-    /// cleanup; it does not return early on cancellation. Extraction checks cancellation before
-    /// publication. Cancellation racing with or following publication does not roll it back.
-    /// At most two async archive bodies run simultaneously across readers and writers.
-    /// Task-local values and current-task identity are not propagated into the body.
+    /// Cancellation does not interrupt an active callback. The await completes only after closure
+    /// and cleanup. Already published output is not rolled back by cancellation.
+    /// See <doc:StreamingAndOwnership> for the full async contract.
     ///
     /// ```swift
     /// let entries = try await ZIPReader.withArchiveAsync(at: archiveURL) { reader in

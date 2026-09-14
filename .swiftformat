@@ -1,4 +1,5 @@
 --swiftversion 6.2
+--markdown-files strict
 --indent 4
 --maxwidth 140
 --wraparguments before-first

@@ -1,10 +1,15 @@
 import Foundation
 
-/// Opens minizip-ng CDCD archives only after decrypting and authenticating their catalog.
-/// Requires a password at scope entry. Catalog memory is capped at 64 MiB, in addition to
-/// ZIPLimits for entries, paths and file payloads. Not compatible with PKWARE encrypted catalogs.
-/// This scoped session is not Sendable. Concurrent/reentrant operations fail; escaped sessions
-/// cannot read after close. Owned metadata snapshots remain available after the scope ends.
+/// Reads archives whose file contents and catalog are encrypted.
+///
+/// The password unlocks and verifies the catalog before your archive closure runs.
+/// File contents are verified when read. Use the reader only inside its closure, and use
+/// separate sessions for parallel reads. Calls must not overlap or call back into this reader.
+///
+/// - Important: This reader accepts minizip-ng CDCD archives, including those created by
+///   ``SecureZIPWriter``. Use ``ZIPReader`` for ordinary ZIP archives.
+///
+/// See <doc:PasswordsAndEncryption> for compatibility and catalog limits.
 public final class SecureZIPReader {
     private let core: ZIPReader
     private let password: String
@@ -14,13 +19,25 @@ public final class SecureZIPReader {
         self.password = password
     }
 
-    /// Owned catalog snapshots, available only after catalog authentication has succeeded.
+    /// The entries from the verified archive catalog.
+    ///
+    /// Listing entries does not read or verify file contents. Entry metadata remains usable
+    /// after the session closes.
     public var entries: [ZIPEntry] {
         core.entries
     }
 
-    /// Authenticates the catalog before invoking the body; always checks archive closure.
-    /// File payload integrity is checked when each file is read, not while listing.
+    /// Opens an encrypted-catalog archive for reading within a closure.
+    ///
+    /// The catalog is verified before `body` runs, and the archive is closed before this method returns.
+    ///
+    /// - Parameters:
+    ///   - url: The archive file. Its path must not contain symlinks.
+    ///   - password: The password for the catalog and file contents.
+    ///   - limits: Limits on entry metadata and decompressed files. A separate catalog limit also applies.
+    ///   - body: The work to perform with this reader. Use it only inside this closure.
+    /// - Returns: The value returned by `body`.
+    /// - Throws: An error if the catalog cannot be opened or verified. Body and cleanup errors are preserved.
     public static func withArchive<T>(
         at url: URL,
         password: String,
@@ -43,7 +60,12 @@ public final class SecureZIPReader {
         }
     }
 
-    /// Runs a synchronous scope on the bounded archive queue; cancellation waits for cleanup.
+    /// Reads an encrypted-catalog archive on a background queue.
+    ///
+    /// The closure follows the same rules as `withArchive` and runs synchronously. Use the reader
+    /// only inside it and return `Sendable` results such as data or metadata.
+    /// The await completes after the archive closes and cleanup finishes, including on cancellation.
+    /// See <doc:StreamingAndOwnership> for the full async contract.
     public static func withArchiveAsync<T: Sendable>(
         at url: URL,
         password: String,
@@ -55,22 +77,55 @@ public final class SecureZIPReader {
         }
     }
 
-    /// Looks up an exact UTF-8 path without reading its payload.
+    /// Finds an entry by its archive path.
+    ///
+    /// - Parameter path: The exact path as listed in ``entries``, including any trailing slash.
+    /// - Returns: The entry's metadata, or `nil` if no entry matches.
+    ///
+    /// Lookup is case-sensitive and does not read file contents.
     public func entry(at path: String) -> ZIPEntry? {
         core.entry(at: path)
     }
 
-    /// Streams owned chunks. Treat delivered bytes as provisional until final integrity verification.
+    /// Reads a file's contents in chunks using the archive password.
+    ///
+    /// - Parameters:
+    ///   - path: The exact entry path.
+    ///   - chunkSize: The maximum bytes per chunk, from 1 byte to 1 MiB. Defaults to 64 KiB.
+    ///   - consumer: Called synchronously with each `Data` chunk. You can retain chunks or throw
+    ///     to stop reading. Do not call this reader again from the callback.
+    /// - Throws: A reading, verification, callback or cancellation error.
+    ///
+    /// - Important: Chunks are not fully verified until this method returns successfully.
+    ///   Discard data from a failed read.
     public func read(path: String, chunkSize: Int = 64 * 1024, consumer: (Data) throws -> Void) throws {
         try core.read(path: path, password: password, chunkSize: chunkSize, consumer: consumer)
     }
 
-    /// Returns verified bytes, bounded by maximumBytes as well as ZIPLimits.
+    /// Reads an entry's complete contents into memory using the archive password.
+    ///
+    /// - Parameters:
+    ///   - path: The exact entry path.
+    ///   - maximumBytes: The maximum returned data size. Defaults to 16 MiB and must be nonnegative.
+    /// - Returns: Verified file data, or empty data for an empty file or directory.
+    /// - Throws: A reading or verification error, or ``ZIPError`` if a size limit is exceeded.
+    ///
+    /// The reader's ``ZIPLimits`` also apply. Prefer streaming for large files.
     public func data(path: String, maximumBytes: Int = 16 * 1024 * 1024) throws -> Data {
         try core.data(path: path, password: password, maximumBytes: maximumBytes)
     }
 
-    /// Extracts selected files atomically with the scope password; failures preserve the old destination.
+    /// Extracts files to a destination folder using the archive password.
+    ///
+    /// - Parameters:
+    ///   - destination: The output folder. Its parent must exist and its path must not contain symlinks.
+    ///   - selection: The entries to extract. Defaults to all entries.
+    ///   - overwrite: How to handle an existing destination. Defaults to failing if it exists.
+    /// - Throws: An extraction, verification or cancellation error.
+    ///
+    /// Failure before publication preserves an existing destination. Cleanup can fail after the new
+    /// result becomes visible. Folders are replaced as a whole, and original permissions and timestamps
+    /// are not restored. See <doc:SafetyAndLimits> for extraction rules.
     public func extract(to destination: URL, selection: ZIPSelection = .all, overwrite: ZIPOverwrite = .fail) throws {
         try core.extract(to: destination, selection: selection, password: password, overwrite: overwrite)
     }
