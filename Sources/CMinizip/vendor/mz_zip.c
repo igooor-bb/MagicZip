@@ -1749,6 +1749,22 @@ static int32_t mz_zip_entry_open_int(void *handle, uint8_t raw, int16_t compress
         return MZ_SUPPORT_ERROR;
 #endif
 
+    /* Validate encryption framing before even reading the password verifier. */
+    if (zip->open_mode & MZ_OPEN_MODE_READ) {
+        int64_t overhead = 0;
+        if (zip->file_info.flag & MZ_ZIP_FLAG_ENCRYPTED) {
+            if (zip->file_info.aes_version) {
+                if (zip->file_info.aes_strength < 1 || zip->file_info.aes_strength > 3)
+                    return MZ_FORMAT_ERROR;
+                overhead = 16 + 4 * zip->file_info.aes_strength;
+            } else {
+                overhead = MZ_PKCRYPT_HEADER_SIZE;
+            }
+        }
+        if (zip->file_info.compressed_size < overhead)
+            return MZ_FORMAT_ERROR;
+    }
+
     zip->entry_raw = raw;
 
     if ((zip->file_info.flag & MZ_ZIP_FLAG_ENCRYPTED) && (password)) {
@@ -1855,21 +1871,16 @@ static int32_t mz_zip_entry_open_int(void *handle, uint8_t raw, int16_t compress
         } else {
             int32_t set_end_of_stream = 0;
 
-#ifndef HAVE_LIBCOMP
-            if (zip->entry_raw || zip->file_info.compression_method == MZ_COMPRESS_METHOD_STORE ||
-                zip->file_info.flag & MZ_ZIP_FLAG_ENCRYPTED)
-#endif
-            {
-                max_total_in = zip->file_info.compressed_size;
-                mz_stream_set_prop_int64(zip->crypt_stream, MZ_STREAM_PROP_TOTAL_IN_MAX, max_total_in);
+            /* Bound every codec, including plaintext Deflate, to the declared payload. */
+            max_total_in = zip->file_info.compressed_size;
+            mz_stream_set_prop_int64(zip->crypt_stream, MZ_STREAM_PROP_TOTAL_IN_MAX, max_total_in);
 
-                if (mz_stream_get_prop_int64(zip->crypt_stream, MZ_STREAM_PROP_HEADER_SIZE, &header_size) == MZ_OK)
-                    max_total_in -= header_size;
-                if (mz_stream_get_prop_int64(zip->crypt_stream, MZ_STREAM_PROP_FOOTER_SIZE, &footer_size) == MZ_OK)
-                    max_total_in -= footer_size;
+            if (mz_stream_get_prop_int64(zip->crypt_stream, MZ_STREAM_PROP_HEADER_SIZE, &header_size) == MZ_OK)
+                max_total_in -= header_size;
+            if (mz_stream_get_prop_int64(zip->crypt_stream, MZ_STREAM_PROP_FOOTER_SIZE, &footer_size) == MZ_OK)
+                max_total_in -= footer_size;
 
-                mz_stream_set_prop_int64(zip->compress_stream, MZ_STREAM_PROP_TOTAL_IN_MAX, max_total_in);
-            }
+            mz_stream_set_prop_int64(zip->compress_stream, MZ_STREAM_PROP_TOTAL_IN_MAX, max_total_in);
 
             switch (zip->file_info.compression_method) {
             case MZ_COMPRESS_METHOD_LZMA:

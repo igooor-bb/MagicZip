@@ -21,6 +21,11 @@ let sources = [
     "Sources/CMinizip/include/CMinizip.h",
     "Tests/CMinizipTestSupport/FinalizationProbe.c",
     "Tests/CMinizipTestSupport/include/FinalizationProbe.h",
+    "Tests/CMinizipTestSupport/CryptoFailureProbe.c",
+    "Tests/CMinizipTestSupport/MemoryGrowthProbe.c",
+    "Tests/CMinizipTestSupport/ReadControlProbe.c",
+    "Tests/CMinizipTestSupport/include/SecurityProbe.h",
+    "Tests/CMinizipTestSupport/include/CMinizipTestSupport.h",
     "Benchmarks/Support/jemalloc/jemalloc.h",
 ]
 

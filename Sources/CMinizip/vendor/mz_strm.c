@@ -33,7 +33,7 @@ int32_t mz_stream_is_open(void *stream) {
 
 int32_t mz_stream_read(void *stream, void *buf, int32_t size) {
     mz_stream *strm = (mz_stream *)stream;
-    if (!strm || !strm->vtbl || !strm->vtbl->read)
+    if (size < 0 || (size > 0 && !buf) || !strm || !strm->vtbl || !strm->vtbl->read)
         return MZ_PARAM_ERROR;
     if (mz_stream_is_open(strm) != MZ_OK)
         return MZ_STREAM_ERROR;
@@ -102,7 +102,7 @@ int32_t mz_stream_write(void *stream, const void *buf, int32_t size) {
     mz_stream *strm = (mz_stream *)stream;
     if (size == 0)
         return size;
-    if (!strm || !strm->vtbl || !strm->vtbl->write)
+    if (size < 0 || !buf || !strm || !strm->vtbl || !strm->vtbl->write)
         return MZ_PARAM_ERROR;
     if (mz_stream_is_open(strm) != MZ_OK)
         return MZ_STREAM_ERROR;
@@ -447,7 +447,11 @@ int32_t mz_stream_raw_read(void *stream, void *buf, int32_t size) {
     int32_t bytes_to_read = size;
     int32_t read = 0;
 
-    if (raw->max_total_in > 0) {
+    if (size < 0)
+        return MZ_PARAM_ERROR;
+    if (raw->max_total_in >= 0) {
+        if (raw->total_in > raw->max_total_in)
+            return MZ_DATA_ERROR;
         if ((int64_t)bytes_to_read > (raw->max_total_in - raw->total_in))
             bytes_to_read = (int32_t)(raw->max_total_in - raw->total_in);
     }
@@ -530,8 +534,10 @@ static mz_stream_vtbl mz_stream_raw_vtbl = {
 
 void *mz_stream_raw_create(void) {
     mz_stream_raw *raw = (mz_stream_raw *)calloc(1, sizeof(mz_stream_raw));
-    if (raw)
+    if (raw) {
         raw->stream.vtbl = &mz_stream_raw_vtbl;
+        raw->max_total_in = -1; /* Zero is an empty stream, not an unlimited stream. */
+    }
     return raw;
 }
 

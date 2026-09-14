@@ -40,11 +40,14 @@ extension NativeArchive {
             try check(magiczip_read_open(pointer, password), .openEncryptedCatalog)
             var complete = false
             try completing {
+                try check(magiczip_catalog_prepare(pointer, Int32(info.uncompressed_size)), .bufferEncryptedCatalog)
                 var total: Int64 = 0
                 var buffer = [UInt8](repeating: 0, count: 64 * 1024)
                 while true {
                     try checkCancellation(cancellation)
-                    let size = magiczip_read(pointer, &buffer, Int32(buffer.count))
+                    let size = try buffer.withUnsafeMutableBytes {
+                        try read(into: $0, cancellation: cancellation)
+                    }
                     if size < 0 {
                         try check(size, .readEncryptedCatalog)
                     }

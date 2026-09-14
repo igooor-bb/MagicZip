@@ -4,3 +4,6 @@
 0003-expose-computed-crc.patch
 0004-update-replaced-catalog-bounds.patch
 0005-match-symlink-buffer-capacity-type.patch
+0006-bound-entry-input.patch
+0007-propagate-crypto-errors.patch
+0008-grow-memory-stream-geometrically.patch

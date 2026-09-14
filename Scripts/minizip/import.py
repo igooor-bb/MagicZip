@@ -118,7 +118,8 @@ def ordered_patches():
 def apply_patches(destination):
     patches = ordered_patches()
     for patch in patches:
-        run("patch", "--batch", "--fuzz=0", "-p1", "-d", str(destination), "-i", str(patch))
+        # Preparation is disposable; never ship patch's .orig backup files in vendor/.
+        run("patch", "--batch", "--fuzz=0", "-V", "none", "-p1", "-d", str(destination), "-i", str(patch))
     return [{"file": patch.name, "sha256": sha256(patch)} for patch in patches]
 
 

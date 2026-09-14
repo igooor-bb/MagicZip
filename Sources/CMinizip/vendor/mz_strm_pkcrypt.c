@@ -181,6 +181,11 @@ int32_t mz_stream_pkcrypt_read(void *stream, void *buf, int32_t size) {
     int32_t read = 0;
     int32_t i = 0;
 
+    if (size < 0)
+        return MZ_PARAM_ERROR;
+    if (pkcrypt->total_in > pkcrypt->max_total_in)
+        return MZ_DATA_ERROR;
+
     if ((int64_t)bytes_to_read > (pkcrypt->max_total_in - pkcrypt->total_in))
         bytes_to_read = (int32_t)(pkcrypt->max_total_in - pkcrypt->total_in);
 

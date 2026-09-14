@@ -261,7 +261,9 @@ final class ArchiveReader {
 
                 while true {
                     try checkCancellation(cancellation)
-                    let count = magiczip_read(native.pointer, &buffer, Int32(buffer.count))
+                    let count = try buffer.withUnsafeMutableBytes {
+                        try native.read(into: $0, cancellation: cancellation)
+                    }
                     guard count >= 0 else {
                         try check(count, .readEntry, path: entry.path)
 

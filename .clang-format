@@ -9,3 +9,5 @@ AllowShortLoopsOnASingleLine: false
 InsertBraces: true
 PointerAlignment: Right
 SortIncludes: Never
+SeparateDefinitionBlocks: Always
+MaxEmptyLinesToKeep: 1

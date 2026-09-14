@@ -12,6 +12,38 @@ struct NativeArchive: ~Copyable {
         self.pointer = pointer
     }
 
+    /// Checks token and task cancellation before each file-input read, since one decompression call
+    /// can consume many input chunks without returning output. A temporary C callback saves the Swift
+    /// cancellation error for this wrapper to rethrow; other native statuses are returned unchanged.
+    borrowing func read(
+        into buffer: UnsafeMutableRawBufferPointer,
+        cancellation: ArchiveCancellation?,
+    ) throws -> Int32 {
+        struct ReadCancellationContext {
+            let cancellation: ArchiveCancellation?
+            var error: (any Error)?
+        }
+
+        var control = ReadCancellationContext(cancellation: cancellation)
+        let result = withUnsafeMutablePointer(to: &control) { context in
+            magiczip_read_controlled(pointer, buffer.baseAddress, Int32(buffer.count), { raw in
+                let context = raw!.assumingMemoryBound(to: ReadCancellationContext.self)
+                do {
+                    try checkCancellation(context.pointee.cancellation)
+                    return 0
+                } catch {
+                    context.pointee.error = error
+                    return -115
+                }
+            }, context)
+        }
+
+        if let error = control.error {
+            throw error
+        }
+        return result
+    }
+
     mutating func close() throws {
         try check(magiczip_close(&pointer), .closeArchive)
     }

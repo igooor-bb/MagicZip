@@ -86,7 +86,7 @@ Cancelling the task requests a stop, but does not interrupt an active file opera
 - Missing destination parents are created automatically and remain if the operation fails. Directory aliases such as `/tmp` and `/var` are supported.
 - Existing destinations fail by default. Pass `overwrite: .replace` to replace a complete file or directory without merging directories. Failure before publication preserves the old destination. A cleanup error after publication can leave the new result visible.
 - Traversal paths, conflicting names, symlinks and special files are rejected. Extraction does not restore permissions or timestamps.
-- Reader defaults allow 100,000 entries, 1 GiB per entry and 4 GiB per selected operation, with additional path and expansion limits. Adjust `ZIPLimits` for your workload. `data` has a separate 16 MiB default cap.
+- Reader defaults allow 100,000 entries, 1 GiB of uncompressed output per entry and 4 GiB of uncompressed output per selected operation, with additional path and expansion limits. Adjust `ZIPLimits` for your workload. `data` has a separate 16 MiB default cap.
 - ZipCrypto and AES-128/192 are supported only for reading existing archives. New encrypted archives always use AES-256.
 - Legacy filename encodings, split archives and archive append are unsupported.
 

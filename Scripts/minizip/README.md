@@ -32,5 +32,8 @@ Edit patches rather than generated vendor files. Every `.patch` must appear exac
 | `0003` | Expose the computed CRC so the adapter can verify it without duplicate calculation |
 | `0004` | Update replacement catalog bounds after CDCD decryption, fixing access to later entries |
 | `0005` | Match the symlink buffer capacity type to `mz_os_read_symlink`, removing a narrowing warning |
+| `0006` | Validate encryption framing, reject negative lengths and bound every codec's input, including empty streams |
+| `0007` | Stop AES processing on random-generation, key-derivation, cipher and authentication failures |
+| `0008` | Grow memory streams geometrically with checked arithmetic and preserve buffers on allocation failure |
 
 The adapter retains size, CRC and AES authentication checks. Keep those checks intact when updating or retiring a patch.

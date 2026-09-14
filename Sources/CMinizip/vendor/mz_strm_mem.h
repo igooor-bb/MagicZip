@@ -32,7 +32,8 @@ int32_t mz_stream_mem_get_buffer_at(void *stream, int64_t position, const void *
 int32_t mz_stream_mem_get_buffer_at_current(void *stream, const void **buf);
 void mz_stream_mem_get_buffer_length(void *stream, int32_t *length);
 void mz_stream_mem_set_buffer_limit(void *stream, int32_t limit);
-void mz_stream_mem_set_grow_size(void *stream, int32_t grow_size);
+/* Set before opening in create mode; later writes grow the buffer geometrically. */
+void mz_stream_mem_set_initial_capacity(void *stream, int32_t initial_capacity);
 
 void *mz_stream_mem_create(void);
 void mz_stream_mem_delete(void **stream);

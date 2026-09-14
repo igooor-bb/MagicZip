@@ -1,0 +1,94 @@
+--- a/mz_strm_mem.c
++++ b/mz_strm_mem.c
+@@ -44,7 +44,7 @@
+     int32_t size;      /* Size of the memory buffer */
+     int32_t limit;     /* Furthest we've written */
+     int32_t position;  /* Current position in the memory */
+-    int32_t grow_size; /* Size to grow when full */
++    int32_t initial_capacity; /* Initial buffer capacity when opened for creation */
+ } mz_stream_mem;
+ 
+ /***************************************************************************/
+@@ -54,14 +54,11 @@
+     int32_t new_size = size;
+     uint8_t *new_buf = NULL;
+ 
+-    new_buf = (uint8_t *)malloc((uint32_t)new_size);
++    if (new_size <= 0 || new_size < mem->size)
++        return MZ_PARAM_ERROR;
++    new_buf = (uint8_t *)realloc(mem->buffer, (uint32_t)new_size);
+     if (!new_buf)
+         return MZ_BUF_ERROR;
+-
+-    if (mem->buffer) {
+-        memcpy(new_buf, mem->buffer, mem->size);
+-        free(mem->buffer);
+-    }
+ 
+     mem->buffer = new_buf;
+     mem->size = new_size;
+@@ -79,7 +76,7 @@
+     mem->position = 0;
+ 
+     if (mem->mode & MZ_OPEN_MODE_CREATE)
+-        err = mz_stream_mem_set_size(stream, mem->grow_size);
++        err = mz_stream_mem_set_size(stream, mem->initial_capacity);
+     else
+         mem->limit = mem->size;
+ 
+@@ -115,16 +112,17 @@
+     int32_t new_size = 0;
+     int32_t err = MZ_OK;
+ 
++    if (size < 0 || size > INT32_MAX - mem->position || (size > 0 && !buf))
++        return MZ_PARAM_ERROR;
+     if (!size)
+         return size;
+ 
+     if (size > mem->size - mem->position) {
+         if (mem->mode & MZ_OPEN_MODE_CREATE) {
+-            new_size = mem->size;
+-            if (size < mem->grow_size)
+-                new_size += mem->grow_size;
+-            else
+-                new_size += size;
++            /* Geometric growth bounds total relocation to O(final capacity). */
++            new_size = mem->size > INT32_MAX / 2 ? INT32_MAX : mem->size * 2;
++            if (new_size < mem->position + size)
++                new_size = mem->position + size;
+ 
+             err = mz_stream_mem_set_size(stream, new_size);
+             if (err != MZ_OK)
+@@ -233,16 +231,16 @@
+     mem->limit = limit;
+ }
+ 
+-void mz_stream_mem_set_grow_size(void *stream, int32_t grow_size) {
+-    mz_stream_mem *mem = (mz_stream_mem *)stream;
+-    mem->grow_size = grow_size;
++void mz_stream_mem_set_initial_capacity(void *stream, int32_t initial_capacity) {
++    mz_stream_mem *mem = (mz_stream_mem *)stream;
++    mem->initial_capacity = initial_capacity;
+ }
+ 
+ void *mz_stream_mem_create(void) {
+     mz_stream_mem *mem = (mz_stream_mem *)calloc(1, sizeof(mz_stream_mem));
+     if (mem) {
+         mem->stream.vtbl = &mz_stream_mem_vtbl;
+-        mem->grow_size = 4096;
++        mem->initial_capacity = 4096;
+     }
+     return mem;
+ }
+--- a/mz_strm_mem.h
++++ b/mz_strm_mem.h
+@@ -32,7 +32,8 @@
+ int32_t mz_stream_mem_get_buffer_at_current(void *stream, const void **buf);
+ void mz_stream_mem_get_buffer_length(void *stream, int32_t *length);
+ void mz_stream_mem_set_buffer_limit(void *stream, int32_t limit);
+-void mz_stream_mem_set_grow_size(void *stream, int32_t grow_size);
++/* Set before opening in create mode; later writes grow the buffer geometrically. */
++void mz_stream_mem_set_initial_capacity(void *stream, int32_t initial_capacity);
+ 
+ void *mz_stream_mem_create(void);
+ void mz_stream_mem_delete(void **stream);

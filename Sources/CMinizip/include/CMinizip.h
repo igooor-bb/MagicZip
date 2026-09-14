@@ -1,10 +1,15 @@
 #ifndef MAGICZIP_CMINIZIP_H
 #define MAGICZIP_CMINIZIP_H
+
 #include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* Private Swift adapter ABI; never exposed in MagicZip's public Swift API. */
 typedef struct magiczip_archive magiczip_archive;
+
 typedef struct {
     const char *name;
     uint16_t name_length;
@@ -23,31 +28,59 @@ typedef struct {
     uint32_t crc;
     uint32_t disk;
 } magiczip_info;
-/* Private Swift adapter ABI; never exposed in MagicZip's public Swift API.
-   open takes ownership of fd on both success and failure. */
+
+/** Takes ownership of fd on both success and failure. */
 int32_t magiczip_open(int fd, int writing, magiczip_archive **archive);
+
 int32_t magiczip_close(magiczip_archive **archive);
+
 int32_t magiczip_first(magiczip_archive *archive);
+
 int32_t magiczip_next(magiczip_archive *archive);
+
 int32_t magiczip_seek(magiczip_archive *archive, int64_t position);
+
 int32_t magiczip_count(magiczip_archive *archive, uint64_t *count);
+
 int32_t magiczip_metadata(magiczip_archive *archive, magiczip_info *info);
+
 int32_t magiczip_read_open(magiczip_archive *archive, const char *password);
+
 int32_t magiczip_read(magiczip_archive *archive, void *buffer, int32_t count);
+
+/** check/context are borrowed only for this call, including all codec input refills. */
+int32_t magiczip_read_controlled(magiczip_archive *archive, void *buffer, int32_t count,
+                                 int32_t (*check)(void *), void *context);
+
 int32_t magiczip_read_close(magiczip_archive *archive, int verify);
+
 int32_t magiczip_write_open(magiczip_archive *archive, const char *path, int directory, int16_t method,
                             int16_t level, int64_t modified, const char *password);
+
 int32_t magiczip_write(magiczip_archive *archive, const void *buffer, int32_t count);
+
 int32_t magiczip_write_close(magiczip_archive *archive);
-/* Private CDCD extension operations. Password memory remains borrowed until entry close. */
+
+/* Private CDCD extension operations. */
 int32_t magiczip_catalog_info(magiczip_archive *archive, uint64_t *entries);
+
 void magiczip_mask_headers(magiczip_archive *archive);
+
+/** Password memory remains borrowed until entry close. */
 int32_t magiczip_catalog_write_begin(magiczip_archive *archive, const char *password, int32_t *length);
+
 int32_t magiczip_catalog_write_chunk(magiczip_archive *archive, int32_t offset, int32_t count);
+
 int32_t magiczip_catalog_write_end(magiczip_archive *archive);
+
+int32_t magiczip_catalog_prepare(magiczip_archive *archive, int32_t length);
+
 int32_t magiczip_catalog_append(magiczip_archive *archive, const void *bytes, int32_t count);
+
 int32_t magiczip_catalog_install(magiczip_archive *archive, uint64_t entries);
+
 #ifdef __cplusplus
 }
 #endif
+
 #endif

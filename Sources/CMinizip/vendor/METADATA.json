@@ -36,6 +36,18 @@
     {
       "file": "0005-match-symlink-buffer-capacity-type.patch",
       "sha256": "b9f4249960106397bf8f4542e9df33097c32a0df82fbc381acf157cb0eff160b"
+    },
+    {
+      "file": "0006-bound-entry-input.patch",
+      "sha256": "171fa6e903641e7a92dc144936dcdc15092822c70913c47d2d4c9e22c1a71dbd"
+    },
+    {
+      "file": "0007-propagate-crypto-errors.patch",
+      "sha256": "ed0cc63b3fee94f9cef68f21a11c39f3e78f2c3ce5e0a55b2f1cb00a12ac24a2"
+    },
+    {
+      "file": "0008-grow-memory-stream-geometrically.patch",
+      "sha256": "a0e508bc10d262e28626d6dd26ff6326cdff740a881ee6821198718105ff2326"
     }
   ],
   "ref": "4.2.2",

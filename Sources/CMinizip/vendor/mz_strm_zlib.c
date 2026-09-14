@@ -133,12 +133,17 @@ int32_t mz_stream_zlib_read(void *stream, void *buf, int32_t size) {
     int32_t read = 0;
     int32_t err = Z_OK;
 
+    if (size < 0)
+        return MZ_PARAM_ERROR;
+
     zlib->zstream.next_out = (Bytef *)buf;
     zlib->zstream.avail_out = (uInt)size;
 
     do {
         if (zlib->zstream.avail_in == 0) {
-            if (zlib->max_total_in > 0) {
+            if (zlib->max_total_in >= 0) {
+                if (zlib->total_in > zlib->max_total_in)
+                    return MZ_DATA_ERROR;
                 if ((int64_t)bytes_to_read > (zlib->max_total_in - zlib->total_in))
                     bytes_to_read = (int32_t)(zlib->max_total_in - zlib->total_in);
             }
@@ -362,6 +367,7 @@ void *mz_stream_zlib_create(void) {
     mz_stream_zlib *zlib = (mz_stream_zlib *)calloc(1, sizeof(mz_stream_zlib));
     if (zlib) {
         zlib->stream.vtbl = &mz_stream_zlib_vtbl;
+        zlib->max_total_in = -1;
         zlib->level = Z_DEFAULT_COMPRESSION;
         zlib->window_bits = -MAX_WBITS;
     }

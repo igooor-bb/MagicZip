@@ -9,10 +9,12 @@ typedef struct {
     int64_t position;
     int fail;
 } fault_stream;
+
 static int32_t opened(void *s) {
     (void)s;
     return MZ_OK;
 }
+
 static int32_t write_bytes(void *s, const void *b, int32_t n) {
     (void)b;
     fault_stream *stream = s;
@@ -22,9 +24,11 @@ static int32_t write_bytes(void *s, const void *b, int32_t n) {
     stream->position += n;
     return n;
 }
+
 static int64_t tell(void *s) {
     return ((fault_stream *)s)->position;
 }
+
 static int32_t seek(void *s, int64_t offset, int32_t origin) {
     fault_stream *stream = s;
     if (origin == MZ_SEEK_SET) {
@@ -34,8 +38,10 @@ static int32_t seek(void *s, int64_t offset, int32_t origin) {
     }
     return MZ_OK;
 }
+
 static mz_stream_vtbl vtable = {NULL, opened, NULL, write_bytes, tell, seek,
                                 NULL, NULL,   NULL, NULL,        NULL, NULL};
+
 int32_t magiczip_test_finalization_failure(int archive_close) {
     fault_stream stream = {{&vtable, NULL}, 0, 0};
     void *zip = mz_zip_create();

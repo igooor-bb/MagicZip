@@ -10,6 +10,8 @@
 typedef struct {
     mz_stream stream;
     FILE *file;
+    int32_t (*check)(void *);
+    void *context;
 } magiczip_file_stream;
 
 struct magiczip_archive {
@@ -20,31 +22,51 @@ struct magiczip_archive {
     int writing;
     int entry_open;
     int64_t read_size;
+    int32_t catalog_size;
 };
 
 static int32_t file_is_open(void *s) {
     return ((magiczip_file_stream *)s)->file ? MZ_OK : MZ_OPEN_ERROR;
 }
+
 static int32_t file_read(void *s, void *buffer, int32_t count) {
-    FILE *file = ((magiczip_file_stream *)s)->file;
+    magiczip_file_stream *stream = s;
+    if (count < 0 || (count > 0 && !buffer)) {
+        return MZ_PARAM_ERROR;
+    }
+    if (stream->check) {
+        int32_t err = stream->check(stream->context);
+        if (err != MZ_OK) {
+            return err;
+        }
+    }
+    FILE *file = stream->file;
     size_t result = fread(buffer, 1, (size_t)count, file);
     return ferror(file) ? MZ_READ_ERROR : (int32_t)result;
 }
+
 static int32_t file_write(void *s, const void *buffer, int32_t count) {
+    if (count < 0 || (count > 0 && !buffer)) {
+        return MZ_PARAM_ERROR;
+    }
     FILE *file = ((magiczip_file_stream *)s)->file;
     size_t result = fwrite(buffer, 1, (size_t)count, file);
     return result == (size_t)count ? count : MZ_WRITE_ERROR;
 }
+
 static int64_t file_tell(void *s) {
     off_t result = ftello(((magiczip_file_stream *)s)->file);
     return result < 0 ? MZ_TELL_ERROR : result;
 }
+
 static int32_t file_seek(void *s, int64_t offset, int32_t origin) {
     return fseeko(((magiczip_file_stream *)s)->file, offset, origin) == 0 ? MZ_OK : MZ_SEEK_ERROR;
 }
+
 static int32_t file_error(void *s) {
     return ferror(((magiczip_file_stream *)s)->file) ? MZ_STREAM_ERROR : MZ_OK;
 }
+
 static int32_t file_get(void *s, int32_t prop, int64_t *value) {
     (void)s;
     if (prop == MZ_STREAM_PROP_DISK_SIZE) {
@@ -57,6 +79,7 @@ static int32_t file_get(void *s, int32_t prop, int64_t *value) {
     }
     return MZ_EXIST_ERROR;
 }
+
 static int32_t file_set(void *s, int32_t prop, int64_t value) {
     (void)s;
     /* Single-file stream: disk 0 is real; minizip uses -1 for the central-directory disk,
@@ -66,6 +89,7 @@ static int32_t file_set(void *s, int32_t prop, int64_t value) {
     }
     return MZ_SUPPORT_ERROR;
 }
+
 static mz_stream_vtbl file_vtable = {NULL, file_is_open, file_read, file_write, file_tell, file_seek,
                                      NULL, file_error,   NULL,      NULL,       file_get,  file_set};
 
@@ -139,18 +163,23 @@ int32_t magiczip_close(magiczip_archive **pointer) {
     free(archive);
     return err;
 }
+
 int32_t magiczip_first(magiczip_archive *a) {
     return mz_zip_goto_first_entry(a->zip);
 }
+
 int32_t magiczip_next(magiczip_archive *a) {
     return mz_zip_goto_next_entry(a->zip);
 }
+
 int32_t magiczip_seek(magiczip_archive *a, int64_t position) {
     return mz_zip_goto_entry(a->zip, position);
 }
+
 int32_t magiczip_count(magiczip_archive *a, uint64_t *count) {
     return mz_zip_get_number_entry(a->zip, count);
 }
+
 int32_t magiczip_metadata(magiczip_archive *a, magiczip_info *out) {
     mz_zip_file *info = NULL;
     int32_t err = mz_zip_entry_get_info(a->zip, &info);
@@ -174,8 +203,18 @@ int32_t magiczip_metadata(magiczip_archive *a, magiczip_info *out) {
     out->position = mz_zip_get_entry(a->zip);
     out->crc = info->crc;
     out->disk = info->disk_number;
+    if (info->flag & MZ_ZIP_FLAG_ENCRYPTED) {
+        int64_t overhead = MZ_PKCRYPT_HEADER_SIZE;
+        if (info->aes_version) {
+            overhead = 16 + 4 * info->aes_strength;
+        }
+        if (info->compressed_size < overhead) {
+            return MZ_FORMAT_ERROR;
+        }
+    }
     return out->position < 0 ? MZ_FORMAT_ERROR : MZ_OK;
 }
+
 int32_t magiczip_read_open(magiczip_archive *a, const char *password) {
     int32_t err = mz_zip_entry_read_open(a->zip, 0, password);
     if (err == MZ_OK) {
@@ -184,6 +223,7 @@ int32_t magiczip_read_open(magiczip_archive *a, const char *password) {
     }
     return err;
 }
+
 int32_t magiczip_read(magiczip_archive *a, void *buffer, int32_t count) {
     int32_t result = mz_zip_entry_read(a->zip, buffer, count);
     if (result > 0) {
@@ -194,6 +234,17 @@ int32_t magiczip_read(magiczip_archive *a, void *buffer, int32_t count) {
     }
     return result;
 }
+
+int32_t magiczip_read_controlled(magiczip_archive *a, void *buffer, int32_t count, int32_t (*check)(void *),
+                                 void *context) {
+    a->file.check = check;
+    a->file.context = context;
+    int32_t result = magiczip_read(a, buffer, count);
+    a->file.check = NULL;
+    a->file.context = NULL;
+    return result;
+}
+
 int32_t magiczip_read_close(magiczip_archive *a, int verify) {
     int32_t err = MZ_OK;
     mz_zip_file *info = NULL;
@@ -245,6 +296,7 @@ int32_t magiczip_read_close(magiczip_archive *a, int verify) {
     a->entry_open = 0;
     return err == MZ_OK ? end : err;
 }
+
 int32_t magiczip_write_open(magiczip_archive *a, const char *path, int directory, int16_t method,
                             int16_t level, int64_t modified, const char *password) {
     mz_zip_file info = {0};
@@ -275,9 +327,11 @@ int32_t magiczip_write_open(magiczip_archive *a, const char *path, int directory
     }
     return err;
 }
+
 int32_t magiczip_write(magiczip_archive *a, const void *buffer, int32_t count) {
     return mz_zip_entry_write(a->zip, buffer, count);
 }
+
 int32_t magiczip_write_close(magiczip_archive *a) {
     if (!a->entry_open) {
         return MZ_OK;
@@ -431,19 +485,26 @@ int32_t magiczip_catalog_write_end(magiczip_archive *a) {
     return err;
 }
 
+int32_t magiczip_catalog_prepare(magiczip_archive *a, int32_t length) {
+    if (a->catalog || length < 0 || length > 64 * 1024 * 1024) {
+        return MZ_PARAM_ERROR;
+    }
+    a->catalog = mz_stream_mem_create();
+    if (!a->catalog) {
+        return MZ_MEM_ERROR;
+    }
+    /* One allocation, including the empty-catalog case; append can never grow it. */
+    a->catalog_size = length;
+    mz_stream_mem_set_initial_capacity(a->catalog, length > 0 ? length : 1);
+    return mz_stream_open(a->catalog, NULL, MZ_OPEN_MODE_CREATE);
+}
+
 int32_t magiczip_catalog_append(magiczip_archive *a, const void *bytes, int32_t count) {
     if (!a->catalog) {
-        a->catalog = mz_stream_mem_create();
-        if (!a->catalog) {
-            return MZ_MEM_ERROR;
-        }
-        int32_t err = mz_stream_open(a->catalog, NULL, MZ_OPEN_MODE_CREATE);
-        if (err != MZ_OK) {
-            return err;
-        }
+        return MZ_PARAM_ERROR;
     }
     int64_t size = mz_stream_tell(a->catalog);
-    if (size < 0 || count < 0 || count > 64 * 1024 * 1024 - size) {
+    if (size < 0 || size > a->catalog_size || count < 0 || count > a->catalog_size - size) {
         return MZ_BUF_ERROR;
     }
     if (count == 0) {
@@ -454,13 +515,10 @@ int32_t magiczip_catalog_append(magiczip_archive *a, const void *bytes, int32_t 
 }
 
 int32_t magiczip_catalog_install(magiczip_archive *a, uint64_t entries) {
-    if (a->entry_open) {
+    if (a->entry_open || !a->catalog || mz_stream_tell(a->catalog) != a->catalog_size) {
         return MZ_PARAM_ERROR;
     }
-    int32_t err = magiczip_catalog_append(a, NULL, 0);
-    if (err == MZ_OK) {
-        err = mz_zip_set_cd_stream(a->zip, 0, a->catalog);
-    }
+    int32_t err = mz_zip_set_cd_stream(a->zip, 0, a->catalog);
     if (err == MZ_OK) {
         err = mz_zip_set_number_entry(a->zip, entries);
     }

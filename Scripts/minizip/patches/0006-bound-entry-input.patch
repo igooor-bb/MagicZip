@@ -1,0 +1,160 @@
+--- a/mz_strm.c
++++ b/mz_strm.c
+@@ -33,7 +33,7 @@
+ 
+ int32_t mz_stream_read(void *stream, void *buf, int32_t size) {
+     mz_stream *strm = (mz_stream *)stream;
+-    if (!strm || !strm->vtbl || !strm->vtbl->read)
++    if (size < 0 || (size > 0 && !buf) || !strm || !strm->vtbl || !strm->vtbl->read)
+         return MZ_PARAM_ERROR;
+     if (mz_stream_is_open(strm) != MZ_OK)
+         return MZ_STREAM_ERROR;
+@@ -102,7 +102,7 @@
+     mz_stream *strm = (mz_stream *)stream;
+     if (size == 0)
+         return size;
+-    if (!strm || !strm->vtbl || !strm->vtbl->write)
++    if (size < 0 || !buf || !strm || !strm->vtbl || !strm->vtbl->write)
+         return MZ_PARAM_ERROR;
+     if (mz_stream_is_open(strm) != MZ_OK)
+         return MZ_STREAM_ERROR;
+@@ -447,7 +447,11 @@
+     int32_t bytes_to_read = size;
+     int32_t read = 0;
+ 
+-    if (raw->max_total_in > 0) {
++    if (size < 0)
++        return MZ_PARAM_ERROR;
++    if (raw->max_total_in >= 0) {
++        if (raw->total_in > raw->max_total_in)
++            return MZ_DATA_ERROR;
+         if ((int64_t)bytes_to_read > (raw->max_total_in - raw->total_in))
+             bytes_to_read = (int32_t)(raw->max_total_in - raw->total_in);
+     }
+@@ -530,8 +534,10 @@
+ 
+ void *mz_stream_raw_create(void) {
+     mz_stream_raw *raw = (mz_stream_raw *)calloc(1, sizeof(mz_stream_raw));
+-    if (raw)
++    if (raw) {
+         raw->stream.vtbl = &mz_stream_raw_vtbl;
++        raw->max_total_in = -1; /* Zero is an empty stream, not an unlimited stream. */
++    }
+     return raw;
+ }
+ 
+--- a/mz_strm_pkcrypt.c
++++ b/mz_strm_pkcrypt.c
+@@ -181,6 +181,11 @@
+     int32_t read = 0;
+     int32_t i = 0;
+ 
++    if (size < 0)
++        return MZ_PARAM_ERROR;
++    if (pkcrypt->total_in > pkcrypt->max_total_in)
++        return MZ_DATA_ERROR;
++
+     if ((int64_t)bytes_to_read > (pkcrypt->max_total_in - pkcrypt->total_in))
+         bytes_to_read = (int32_t)(pkcrypt->max_total_in - pkcrypt->total_in);
+ 
+--- a/mz_strm_wzaes.c
++++ b/mz_strm_wzaes.c
+@@ -181,6 +181,12 @@
+     int32_t bytes_to_read = size;
+     int32_t read = 0;
+ 
++    if (size < 0)
++        return MZ_PARAM_ERROR;
++    if (wzaes->max_total_in < MZ_AES_FOOTER_SIZE ||
++        wzaes->total_in > wzaes->max_total_in - MZ_AES_FOOTER_SIZE)
++        return MZ_DATA_ERROR;
++
+     max_total_in = wzaes->max_total_in - MZ_AES_FOOTER_SIZE;
+     if ((int64_t)bytes_to_read > (max_total_in - wzaes->total_in))
+         bytes_to_read = (int32_t)(max_total_in - wzaes->total_in);
+--- a/mz_strm_zlib.c
++++ b/mz_strm_zlib.c
+@@ -133,12 +133,17 @@
+     int32_t read = 0;
+     int32_t err = Z_OK;
+ 
++    if (size < 0)
++        return MZ_PARAM_ERROR;
++
+     zlib->zstream.next_out = (Bytef *)buf;
+     zlib->zstream.avail_out = (uInt)size;
+ 
+     do {
+         if (zlib->zstream.avail_in == 0) {
+-            if (zlib->max_total_in > 0) {
++            if (zlib->max_total_in >= 0) {
++                if (zlib->total_in > zlib->max_total_in)
++                    return MZ_DATA_ERROR;
+                 if ((int64_t)bytes_to_read > (zlib->max_total_in - zlib->total_in))
+                     bytes_to_read = (int32_t)(zlib->max_total_in - zlib->total_in);
+             }
+@@ -362,6 +367,7 @@
+     mz_stream_zlib *zlib = (mz_stream_zlib *)calloc(1, sizeof(mz_stream_zlib));
+     if (zlib) {
+         zlib->stream.vtbl = &mz_stream_zlib_vtbl;
++        zlib->max_total_in = -1;
+         zlib->level = Z_DEFAULT_COMPRESSION;
+         zlib->window_bits = -MAX_WBITS;
+     }
+--- a/mz_zip.c
++++ b/mz_zip.c
+@@ -1749,6 +1749,22 @@
+         return MZ_SUPPORT_ERROR;
+ #endif
+ 
++    /* Validate encryption framing before even reading the password verifier. */
++    if (zip->open_mode & MZ_OPEN_MODE_READ) {
++        int64_t overhead = 0;
++        if (zip->file_info.flag & MZ_ZIP_FLAG_ENCRYPTED) {
++            if (zip->file_info.aes_version) {
++                if (zip->file_info.aes_strength < 1 || zip->file_info.aes_strength > 3)
++                    return MZ_FORMAT_ERROR;
++                overhead = 16 + 4 * zip->file_info.aes_strength;
++            } else {
++                overhead = MZ_PKCRYPT_HEADER_SIZE;
++            }
++        }
++        if (zip->file_info.compressed_size < overhead)
++            return MZ_FORMAT_ERROR;
++    }
++
+     zip->entry_raw = raw;
+ 
+     if ((zip->file_info.flag & MZ_ZIP_FLAG_ENCRYPTED) && (password)) {
+@@ -1855,21 +1871,16 @@
+         } else {
+             int32_t set_end_of_stream = 0;
+ 
+-#ifndef HAVE_LIBCOMP
+-            if (zip->entry_raw || zip->file_info.compression_method == MZ_COMPRESS_METHOD_STORE ||
+-                zip->file_info.flag & MZ_ZIP_FLAG_ENCRYPTED)
+-#endif
+-            {
+-                max_total_in = zip->file_info.compressed_size;
+-                mz_stream_set_prop_int64(zip->crypt_stream, MZ_STREAM_PROP_TOTAL_IN_MAX, max_total_in);
+-
+-                if (mz_stream_get_prop_int64(zip->crypt_stream, MZ_STREAM_PROP_HEADER_SIZE, &header_size) == MZ_OK)
+-                    max_total_in -= header_size;
+-                if (mz_stream_get_prop_int64(zip->crypt_stream, MZ_STREAM_PROP_FOOTER_SIZE, &footer_size) == MZ_OK)
+-                    max_total_in -= footer_size;
+-
+-                mz_stream_set_prop_int64(zip->compress_stream, MZ_STREAM_PROP_TOTAL_IN_MAX, max_total_in);
+-            }
++            /* Bound every codec, including plaintext Deflate, to the declared payload. */
++            max_total_in = zip->file_info.compressed_size;
++            mz_stream_set_prop_int64(zip->crypt_stream, MZ_STREAM_PROP_TOTAL_IN_MAX, max_total_in);
++
++            if (mz_stream_get_prop_int64(zip->crypt_stream, MZ_STREAM_PROP_HEADER_SIZE, &header_size) == MZ_OK)
++                max_total_in -= header_size;
++            if (mz_stream_get_prop_int64(zip->crypt_stream, MZ_STREAM_PROP_FOOTER_SIZE, &footer_size) == MZ_OK)
++                max_total_in -= footer_size;
++
++            mz_stream_set_prop_int64(zip->compress_stream, MZ_STREAM_PROP_TOTAL_IN_MAX, max_total_in);
+ 
+             switch (zip->file_info.compression_method) {
+             case MZ_COMPRESS_METHOD_LZMA:

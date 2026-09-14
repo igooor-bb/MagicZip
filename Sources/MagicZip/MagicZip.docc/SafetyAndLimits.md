@@ -34,7 +34,9 @@ All metadata is validated when opening an archive; only selected payloads are de
 | Uncompressed bytes per selected operation | 4 GiB |
 | Expansion ratio | 1,000 |
 
-The final name counts toward path depth, and implicit parent directories consume path nodes. Writers use the same fixed entry-count, name-byte, depth and node budgets. `data` has an additional 16 MiB default cap, adjustable with `maximumBytes`. Secure catalogs have a separate fixed 64 MiB allocation budget.
+The final name counts toward path depth, and implicit parent directories consume path nodes. Writers use the same fixed entry-count, name-byte, depth and node budgets. `data` has an additional 16 MiB default cap, adjustable with `maximumBytes`. A decoded secure catalog uses one buffer of at most 64 MiB (one byte for an empty catalog), allocated after the password verifier succeeds. Other session metadata and codec buffers need additional memory.
+
+Codec reads are bounded to each entry’s recorded compressed size, including zero-length payloads. Cancellation is checked between native file-input refills, including refills within one decompression call; it still cannot interrupt a currently executing filesystem call. There is no separate compressed-input or execution-time budget. A Deflate stream can consume substantial input while producing little or no output, so output limits alone do not prevent long processing without cancellation.
 
 Reader limits apply to advertised and actual output. These are application budgets, not ZIP64 format limits. Choose values appropriate to your workload. Limit violations throw ``ZIPError/limitExceeded(_:)``. Streaming bounds payload memory, while metadata still grows with archive size. Deep trees can take longer to traverse even within these limits.
 
