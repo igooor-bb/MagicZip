@@ -1,0 +1,86 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Commit SHA from main (empty for latest main)
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.select.outputs.commit }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Select release commit
+        id: select
+        env:
+          RELEASE_COMMIT: ${{ inputs.commit }}
+        shell: bash
+        run: |
+          if [[ -n "$RELEASE_COMMIT" && ! "$RELEASE_COMMIT" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+            echo '::error::Expected a commit SHA from main.'
+            exit 1
+          fi
+          commit=$(git rev-parse --verify "${RELEASE_COMMIT:-origin/main}^{commit}")
+          git merge-base --is-ancestor "$commit" origin/main
+          git checkout --detach "$commit"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+      - name: Read release version
+        id: version
+        shell: python
+        run: |
+          import os
+          import re
+          from pathlib import Path
+
+          version = Path("VERSION").read_text().strip()
+          if not re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", version):
+              raise SystemExit("VERSION must contain a stable X.Y.Z version")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"tag={version}\n")
+  check:
+    needs: prepare
+    uses: ./.github/workflows/ci.yml
+    with:
+      commit: ${{ needs.prepare.outputs.commit }}
+  release:
+    needs: [prepare, check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          fetch-depth: 0
+      - name: Create tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        shell: bash
+        run: |
+          if git show-ref --verify --quiet "refs/tags/$TAG"; then
+            if [[ "$(git rev-parse "refs/tags/$TAG^{commit}")" != "$(git rev-parse HEAD)" ]]; then
+              echo "::error::Tag $TAG already points to a different commit. Bump VERSION."
+              exit 1
+            fi
+          else
+            git tag "$TAG" HEAD
+            git push origin "refs/tags/$TAG"
+          fi
+          if ! gh release view "$TAG"; then
+            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes
+          fi

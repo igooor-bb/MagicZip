@@ -3,6 +3,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
+    inputs:
+      commit:
+        description: Exact commit to validate
+        required: true
+        type: string
 permissions:
   contents: read
 jobs:
@@ -10,6 +16,8 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.commit || github.sha }}
       - uses: jdx/mise-action@v4
         with:
           cache: true

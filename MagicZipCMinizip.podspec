@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name = 'MagicZipCMinizip'
-  s.version = '0.1.0'
+  s.version = File.read(File.join(__dir__, 'VERSION')).strip
   s.summary = 'Private, namespaced minizip-ng implementation for MagicZip.'
   s.homepage = 'https://github.com/igooor-bb/MagicZip'
   s.license = { :type => 'zlib', :file => 'Sources/CMinizip/vendor/LICENSE' }
