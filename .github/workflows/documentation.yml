@@ -1,0 +1,64 @@
+name: Documentation
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: Configure GitHub Pages
+        id: pages
+        uses: actions/configure-pages@v5
+      - name: Build documentation
+        shell: bash
+        run: |
+          xcodebuild -quiet -scheme MagicZip -configuration Debug \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/Documentation" \
+            CODE_SIGNING_ALLOWED=NO \
+            'OTHER_DOCC_FLAGS=--warnings-as-errors' docbuild
+      - name: Prepare static site
+        env:
+          HOSTING_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+        shell: bash
+        run: |
+          xcrun docc process-archive transform-for-static-hosting \
+            "$RUNNER_TEMP/Documentation/Build/Products/Debug/MagicZip.doccarchive" \
+            --output-path "$RUNNER_TEMP/docc-site" \
+            --hosting-base-path "$HOSTING_BASE_PATH"
+          cat > "$RUNNER_TEMP/docc-site/index.html" <<'HTML'
+          <!doctype html>
+          <html lang="en">
+          <meta charset="utf-8">
+          <title>MagicZip Documentation</title>
+          <meta http-equiv="refresh" content="0; url=documentation/magiczip/">
+          <a href="documentation/magiczip/">Open MagicZip documentation</a>
+          </html>
+          HTML
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: ${{ runner.temp }}/docc-site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy documentation
+        id: deployment
+        uses: actions/deploy-pages@v4
