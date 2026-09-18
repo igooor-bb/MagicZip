@@ -110,33 +110,71 @@ enum FileSystem {
     /// Caller-supplied directory aliases are allowed. Subsequent operations use the opened
     /// descriptor, while traversal inside source trees and staging directories rejects symlinks.
     static func openDirectory(_ url: URL, createIntermediates: Bool = false) throws -> FileDescriptor {
-        guard url.isFileURL, !url.path.utf8.contains(0) else {
-            throw ZIPError.invalidArgument("Expected a local file URL")
+        guard url.isFileURL, url.path.hasPrefix("/"), !url.path.utf8.contains(0) else {
+            throw ZIPError.invalidArgument("Expected an absolute local file URL")
         }
-        var current = try FileDescriptor(open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC), operation: .openRoot, path: "/")
+
         for component in url.path.split(separator: "/") {
             guard component != ".", component != ".." else {
                 throw ZIPError.unsafePath(url.path)
             }
-            current = try current.withCheckedClose(operation: .closeDirectoryComponent, path: String(component)) {
-                let name = String(component)
-                let descriptor = openat($0.raw, name, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
-                if descriptor >= 0 || !createIntermediates || errno != ENOENT {
-                    return try FileDescriptor(descriptor, operation: .openDirectory, path: url.path)
-                }
+        }
+
+        // Opening the full path requires traversal, not read access to every ancestor.
+        var directoryURL = url
+        var directoryPath = directoryURL.path
+        var pendingComponents: [(name: String, wasMissing: Bool)] = []
+        var descriptor = open(directoryPath, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+
+        while descriptor < 0, directoryPath != "/" {
+            let openError = errno
+            guard openError == ENAMETOOLONG || (createIntermediates && openError == ENOENT) else {
+                throw ZIPError.fileSystem(operation: .openDirectory, path: directoryPath, code: openError)
+            }
+
+            pendingComponents.append((name: directoryURL.lastPathComponent, wasMissing: openError == ENOENT))
+            directoryURL.deleteLastPathComponent()
+            directoryPath = directoryURL.path
+            // This prefix is needed only for traversal, not for reading its entries.
+            descriptor = open(directoryPath, O_SEARCH | O_CLOEXEC)
+        }
+
+        var current = try FileDescriptor(descriptor, operation: .openDirectory, path: directoryPath)
+
+        // Traverse the remaining suffix from an opened prefix, creating only missing directories.
+        for (index, component) in pendingComponents.reversed().enumerated() {
+            directoryURL.appendPathComponent(component.name)
+            directoryPath = directoryURL.path
+
+            let flags: Int32 = if index == pendingComponents.count - 1 {
+                O_RDONLY | O_DIRECTORY | O_CLOEXEC
+            } else {
+                O_SEARCH | O_CLOEXEC
+            }
+
+            current = try current.withCheckedClose(operation: .closeDirectoryComponent, path: component.name) { parent in
                 try checkCancellation()
-                if mkdirat($0.raw, name, 0o700) != 0, errno != EEXIST {
-                    throw ZIPError.fileSystem(operation: .createDirectory, path: url.path, code: errno)
+
+                if !component.wasMissing {
+                    let descriptor = openat(parent.raw, component.name, flags)
+                    if descriptor >= 0 || !createIntermediates || errno != ENOENT {
+                        return try FileDescriptor(descriptor, operation: .openDirectory, path: directoryPath)
+                    }
                 }
-                // A missing component may have been created concurrently. Accept a directory,
-                // but never follow a symlink substituted between the lookup and creation.
+
+                if mkdirat(parent.raw, component.name, 0o700) != 0, errno != EEXIST {
+                    throw ZIPError.fileSystem(operation: .createDirectory, path: directoryPath, code: errno)
+                }
+
+                // Accept directories created concurrently, but reject substituted symlinks.
                 return try FileDescriptor(
-                    openat($0.raw, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC),
+                    openat(parent.raw, component.name, flags | O_NOFOLLOW),
                     operation: .openDirectory,
-                    path: url.path,
+                    path: directoryPath,
                 )
             }
         }
+
         return current
     }
 
